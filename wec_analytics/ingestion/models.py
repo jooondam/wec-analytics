@@ -12,3 +12,4 @@ def parse_lap_time(laptime: str) -> float:
     total_numeric_laptime = numeric_laptime[0] * 60 + numeric_laptime[1]
     return total_numeric_laptime
 
+
