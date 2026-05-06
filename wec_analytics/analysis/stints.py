@@ -18,3 +18,14 @@ def detect_outliers(df: pd.DataFrame) -> pd.DataFrame:
     df_new['is_outlier'] = (df_new['lap_time'] <= lower_fence) | (df_new['lap_time'] >= upper_fence)
 
     return df_new
+
+def calculate_drive_stint_stats(df: pd.DataFrame) -> pd.DataFrame:
+    inlier_laps = df[~df['is_outlier']]
+
+    stint_stats = inlier_laps.groupby('stint_number')['lap_time'].agg(
+        avg_lap = 'mean',
+        fastest_lap = 'min'
+    )
+
+    stint_stats = stint_stats.reset_index()
+    return stint_stats
