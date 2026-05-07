@@ -34,6 +34,34 @@ def _get_pit_lap_delta(df: pd.DataFrame, car_number: int, rival_car: int ) -> di
 
 
 
-def _compare_pace_in_window():
+def _compare_pace_in_window(df: pd.DataFrame, delta_data: dict) -> dict:
+    car_number = delta_data['car_number']
+    rival_car = delta_data['rival_car']
+    car_pit_lap = delta_data['car_pit_lap']
+    rival_pit_lap = delta_data['rival_pit_lap']
+
+    # defining the range, both the out lap and subsequent laps on fresh tires
+    start_lap = car_pit_lap + 1
+    end_lap = rival_pit_lap
+
+    # guard clause
+    if start_lap > end_lap:
+        return None
+
+    # filter for specific lap range for both cars
+    window_df = df[df['lap_number'].isin(range(start_lap, end_lap + 1))]
+
+    # calculate average pace for both of cars in this window
+    car_pace = window_df[window_df['car_number'] == car_number]['lap_time'].mean()
+    rival_pace = window_df[window_df['car_number'] == rival_car]['lap_time'].mean()
+
+    return {
+        "car_number": car_number,
+        "rival_car": rival_car,
+        "car_window_pace": car_pace,
+        "rival_window_pace": rival_pace,
+        "pace_delta": car_pace - rival_pace
+    }
+
 
 def _compare_position_change():
