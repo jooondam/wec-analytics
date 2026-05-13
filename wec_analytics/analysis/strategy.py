@@ -7,9 +7,6 @@ def calculate_pit_stops(df: pd.DataFrame) -> pd.DataFrame:
             ((df['pit_time'].notna()) & (df['pit_time'] != 0)),
             ['lap_number', 'car_number', 'team', 'class', 'pit_time', 'stint_number']]
     
-def detect_undercut(df, car_number, rival_car):
-    current_pit_stop = calculate_pit_stops(df)
-    return current_pit_stop[current_pit_stop['car_number'].isin([car_number, rival_car])]
 
 
 def _get_pit_lap_delta(df: pd.DataFrame, car_number: int, rival_car: int ) -> dict:
@@ -64,4 +61,87 @@ def _compare_pace_in_window(df: pd.DataFrame, delta_data: dict) -> dict:
     }
 
 
-def _compare_position_change():
+def _compare_position_change(df: pd.DataFrame, delta_data: dict) -> dict:
+    car_number = delta_data['car_number']
+    rival_car = delta_data['rival_car']
+    car_pit_lap = delta_data['car_pit_lap']
+    rival_pit_lap = delta_data['rival_pit_lap']
+
+    # filter pre pit laps for the primary car
+    car_pre_pit = df[(df['car_number'] == car_number) & (df['lap_number'] < car_pit_lap)]
+    # filter pre pit laps for the rival car
+    rival_pre_pit = df[(df['car_number'] == rival_car) & (df['lap_number'] < rival_pit_lap)]
+
+    # calculate cumulative baseline lap times
+    car_pre_base_time = car_pre_pit['lap_time'].sum()
+    rival_pre_base_time = rival_pre_pit['lap_time'].sum()
+
+    # filter post pit laps for the primary car
+    car_post_pit = df[(df['car_number'] == car_number) & (df['lap_number'] <= car_pit_lap + 1)]
+    # filter post pit laps for the rival car
+    rival_post_pit = df[(df['car_number'] == rival_car) & (df['lap_number'] <= rival_pit_lap + 1)]
+
+    # calculate cumulative baseline lap times
+    car_post_base_time = car_post_pit['lap_time'].sum()
+    rival_post_base_time = rival_post_pit['lap_time'].sum()
+
+    # check if primary car was ahead before pit stop
+    was_ahead_before = car_pre_base_time < rival_pre_base_time
+    #check if primary car was ahead after pit stop
+    is_ahead_after = car_post_base_time < rival_post_base_time
+    # position changed if the leadership flipped between the two snapshot
+    position_changed = was_ahead_before != is_ahead_after
+
+    return {
+        "car_pre_base_time": car_pre_base_time,
+        "rival_pre_base_time": rival_pre_base_time,
+        "car_post_base_time": car_post_base_time,
+        "rival_post_base_time": rival_post_base_time,
+        "position_changed": position_changed
+    }
+
+def detect_undercut(df: pd.DataFrame, car_number: int, rival_car: int) -> dict:
+    pit_stops_df = calculate_pit_stops(df)
+    
+    # delegate the guard clause and lap extraction to your existing helper
+    delta_data = _get_pit_lap_delta(pit_stops_df, car_number, rival_car)
+
+    # handle the scenario where a car did not pit (helper returned None)
+    if delta_data is None:
+        return {
+            "car_number": car_number,
+            "rival_car": rival_car,
+            "undercut_attempted": False,
+            "reason": "One or both cars did not make a valid pit stop."
+        }
+
+    # check if the primary car actually pitted first (is it an undercut attempt?)
+    if delta_data["lap_delta"] >= 0:
+        return {
+            "car_number": car_number,
+            "rival_car": rival_car,
+            "undercut_attempted": False,
+            "reason": f"Car {car_number} did not pit before rival {rival_car}."
+        }
+
+    # execute the downstream helper functions using delta_data
+    pace_results = _compare_pace_in_window(df, delta_data)
+    position_results = _compare_position_change(df, delta_data)
+
+    # guard if the pacing window is invalid (e.g. pitted on sequential laps)
+    if pace_results is None:
+        return {
+            "car_number": car_number,
+            "rival_car": rival_car,
+            "undercut_attempted": True,
+            "reason": "Insufficient lap window between pit stops to evaluate pace."
+        }
+
+    return {
+        "car_number": car_number,
+        "rival_car": rival_car,
+        "undercut_attempted": True,
+        "undercut_successful": (pace_results["pace_delta"] < 0) and position_results["position_changed"],
+        "pace_details": pace_results,
+        "position_details": position_results
+    }
