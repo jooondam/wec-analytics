@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 def clean_session(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = df.columns.str.strip().str.lower()
     df = df.dropna(subset=["lap_time"])
