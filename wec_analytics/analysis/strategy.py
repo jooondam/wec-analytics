@@ -2,7 +2,27 @@ import pandas as pd
 import numpy as np
 
 def calculate_pit_stops(df: pd.DataFrame) -> pd.DataFrame:
-    return df.loc[(df['crossing_finish_line_in_pit'] == 'B') & 
+    """
+    Extract rows corresponding to actual pit stops from a session DataFrame.
+
+    A pit stop is defined as a lap where the car crosses the finish line in the
+    pit (``crossing_finish_line_in_pit == "B"``) and has a non-zero, non-null
+    ``pit_time``.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Session DataFrame containing ``crossing_finish_line_in_pit``,
+        ``pit_time``, ``lap_number``, ``car_number``, ``team``, ``class``,
+        and ``stint_number`` columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered DataFrame with columns ``lap_number``, ``car_number``,
+        ``team``, ``class``, ``pit_time``, and ``stint_number``.
+    """
+    return df.loc[(df['crossing_finish_line_in_pit'] == 'B') &
             # checking that pit time in not empty and null
             ((df['pit_time'].notna()) & (df['pit_time'] != 0)),
             ['lap_number', 'car_number', 'team', 'class', 'pit_time', 'stint_number']]
@@ -101,6 +121,32 @@ def _compare_position_change(df: pd.DataFrame, delta_data: dict) -> dict:
     }
 
 def detect_undercut(df: pd.DataFrame, car_number: int, rival_car: int) -> dict:
+    """
+    Determine whether a car attempted and succeeded in undercutting a rival.
+
+    An undercut attempt is defined as the primary car pitting before the rival.
+    Success requires both a pace advantage during the window between the two pit
+    stops and a position change after the rival exits the pits.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Full session DataFrame (not the pit stops subset) containing lap times,
+        car numbers, and pit stop data.
+    car_number : int
+        Car number of the car attempting the undercut.
+    rival_car : int
+        Car number of the rival being undercut.
+
+    Returns
+    -------
+    dict
+        Always contains ``car_number``, ``rival_car``, and
+        ``undercut_attempted``. When ``undercut_attempted`` is ``False`` a
+        ``reason`` string is included. When ``True`` and the window is valid,
+        also contains ``undercut_successful`` (bool), ``pace_details``, and
+        ``position_details``.
+    """
     pit_stops_df = calculate_pit_stops(df)
     
     # delegate the guard clause and lap extraction to your existing helper
