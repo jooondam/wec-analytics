@@ -77,6 +77,17 @@ def build_lap_features(laps: pd.DataFrame, rolling_window: int = 5,) -> pd.DataF
         .transform(lambda x: x.rolling(window=rolling_window, min_periods=1, closed='left').median())
     )
 
-    return df
+    # reference pace and class features
+    # we mask outlier lap times to NaN so they are ignored by .transform('min')
+    # because the index remains intact, the clean minimum is broadcasted
+    # back to ALL laps including the outliers also
+    clean_lap_time = df["lap_time"].where(~df["is_outlier"])
 
-    pass
+    df["class_best_lap"] = (
+        clean_lap_time
+        .groupby([df["car_class"], df["lap_number"]])
+        .transform("min")
+)
+    # if an outlier lap can see how far off the clean class pace it was
+    df["class_pace_delta"] = df["lap_time"] - df["class_best_lap"]
+    return df
