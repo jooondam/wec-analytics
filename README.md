@@ -1,6 +1,6 @@
 # wec-analytics
 
-WEC timing data from Al Kamel Systems is rich but raw — lap times arrive as strings, pit stops are buried in flag columns, and there's no concept of a stint or an outlier. This library takes that raw CSV and gives you a clean analysis pipeline: fetch, clean, detect stints, flag outliers, then run whatever analysis you need.
+WEC timing data from Al Kamel Systems is rich but raw, lap times arrive as strings, pit stops are buried in flag columns, and there's no concept of a stint or an outlier. This library takes that raw CSV and gives you a clean analysis pipeline: fetch, clean, detect stints, flag outliers, then run whatever analysis you need.
 
 Built for the FIA World Endurance Championship, targeting Hypercar and LMGT3 sessions.
 
