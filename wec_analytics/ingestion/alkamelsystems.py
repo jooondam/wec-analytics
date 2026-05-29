@@ -3,11 +3,23 @@ import pandas as pd
 import requests
 from urllib.parse import unquote
 
-def read_csv_with_fallback(cache_path: str | Path ) -> pd.DataFrame:
+def read_csv_with_fallback(cache_path: str | Path) -> pd.DataFrame:
     try:
-        return pd.read_csv(cache_path, encoding= 'utf-8')
+        return pd.read_csv(
+            cache_path,
+            sep=";",
+            encoding="utf-8-sig",
+            skipinitialspace=True,
+            usecols=lambda c: not c.startswith("Unnamed"),
+        )
     except UnicodeDecodeError:
-        return pd.read_csv(cache_path, encoding= 'latin-1')
+        return pd.read_csv(
+            cache_path,
+            sep=";",
+            encoding="latin-1",
+            skipinitialspace=True,
+            usecols=lambda c: not c.startswith("Unnamed"),
+        )
 
 def fetch_session(url: str, cache_dir: str | Path = "cache") -> pd.DataFrame:
     """
