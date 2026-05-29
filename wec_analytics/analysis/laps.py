@@ -23,21 +23,20 @@ def get_class_laps(df: pd.DataFrame, target_class: str) -> pd.DataFrame:
     """
     return df[df["class"].str.casefold() == target_class.casefold()]
 
-def detect_traffic_lap(df: pd.DataFrame, car_number: str, slow_threshold: float = 0.03) -> pd.DataFrame:
+def detect_traffic_lap(df: pd.DataFrame, slow_threshold: float = 0.03) -> pd.DataFrame:
     """
-    Identify laps where a car was likely impeded by traffic.
+    Flag laps where a car was likely impeded by traffic.
 
-    A lap is flagged as a traffic lap if its time exceeds the car's average
-    clean lap time by more than ``slow_threshold``. The average is computed
-    from non-outlier laps only.
+    A lap is flagged if its time exceeds the car's average clean lap time
+    by more than ``slow_threshold``. The average is computed from non‑outlier
+    laps only. This version operates on the **full session DataFrame** and adds
+    an ``is_traffic_lap`` column to every row — it never drops data.
 
     Parameters
     ----------
     df : pd.DataFrame
         Session DataFrame with ``car_number``, ``lap_time``, and ``is_outlier``
         columns. Must have had ``detect_outliers`` applied first.
-    car_number : str
-        The car number to analyse, e.g. ``"8"``.
     slow_threshold : float, optional
         Fractional excess above the car's mean clean lap time used as the
         impeded cutoff. Defaults to ``0.03`` (3%).
@@ -45,7 +44,8 @@ def detect_traffic_lap(df: pd.DataFrame, car_number: str, slow_threshold: float 
     Returns
     -------
     pd.DataFrame
-        Subset of the car's laps where ``lap_time`` exceeds the cutoff.
+        A **copy** of the input DataFrame with the new boolean column
+        ``is_traffic_lap`` appended. No rows are removed.
 
     Raises
     ------
@@ -53,19 +53,29 @@ def detect_traffic_lap(df: pd.DataFrame, car_number: str, slow_threshold: float 
         If the ``is_outlier`` column is absent — run ``detect_outliers`` first.
     """
     # i chose 3% which is the minimum threshold to where a lap is considered impeded
-    # filter the DataFrame for the specific car
+    # this guard clause ensures outlier flags exist so we can compute clean averages
     if "is_outlier" not in df.columns:
         raise KeyError(
-            "The input DataFrame is missing the required 'is_outlier' column. "
-            "Please run detect_outliers() before calling this function."
+            "Missing 'is_outlier' column. Run detect_outliers() before detect_traffic_lap()."
         )
-    car_df = df[df["car_number"] == car_number]
-    # get average lap for specific car
-    avg_lap = car_df[~car_df["is_outlier"]]["lap_time"].mean()
-    # calculate the cutoff using the formula
-    cutoff = avg_lap * (1 + slow_threshold)
-    # return only laps that exceed cutoff
-    return car_df[car_df['lap_time'] > cutoff]
+
+    # work on a copy so the original DataFrame is never modified
+    laps = df.copy()
+
+    # compute per‑car mean of clean laps (non‑outlier only)
+    clean_laps = laps[~laps["is_outlier"]]
+    car_mean = clean_laps.groupby("car_number")["lap_time"].mean()
+
+    # map the per‑car mean onto every row (including outliers)
+    laps["_mean_clean"] = laps["car_number"].map(car_mean)
+
+    # flag laps slower than the cutoff: (1 + threshold) * car_mean
+    laps["is_traffic_lap"] = laps["lap_time"] > laps["_mean_clean"] * (1 + slow_threshold)
+
+    # drop the temporary helper column to keep the output clean
+    laps.drop(columns=["_mean_clean"], inplace=True)
+
+    return laps
 
 def compare_class_pace(df: pd.DataFrame, car_class: str, car_class_comp: str) -> pd.DataFrame:
     """
