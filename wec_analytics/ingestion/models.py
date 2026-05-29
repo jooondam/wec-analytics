@@ -22,17 +22,19 @@ def clean_session(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
+    df = df.rename(columns={"number": "car_number", "class": "car_class"})
     df = df.dropna(subset=["lap_time"])
     df["lap_time"] = df["lap_time"].apply(parse_lap_time)
 
     # flag laps where the car crossed the finish line entering the pit
-    df["is_in_lap"] = df["crossing_finish_line_in_pit"] == "B"
+    df["is_in_lap"] = (df["crossing_finish_line_in_pit"] == "B").astype(bool)
 
     # flag the lap immediately after an in-lap for each car
     df["is_out_lap"] = (
-        df.groupby("number")["is_in_lap"]
-        .shift(1)
-        .fillna(False)
+    df.groupby("car_number")["is_in_lap"]
+    .shift(1)
+    .fillna(False)
+    .astype(bool)
     )
 
     return df
