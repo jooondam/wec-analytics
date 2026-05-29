@@ -5,9 +5,10 @@ def clean_session(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normalise a raw Al Kamel Systems session DataFrame for downstream analysis.
 
-    Strips and lowercases all column names, drops rows with no lap time, and
+    Strips and lowercases all column names, drops rows with no lap time,
     converts the ``lap_time`` column from ``"M:SS.mmm"`` string format to
-    fractional seconds.
+    fractional seconds, and adds ``is_in_lap`` and ``is_out_lap`` boolean
+    columns derived from pit crossing and pit time data.
 
     Parameters
     ----------
@@ -17,11 +18,23 @@ def clean_session(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Cleaned DataFrame with ``lap_time`` expressed in seconds as a float.
+        Cleaned DataFrame with ``lap_time`` in seconds and pit lap flags.
     """
+    df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
     df = df.dropna(subset=["lap_time"])
     df["lap_time"] = df["lap_time"].apply(parse_lap_time)
+
+    # flag laps where the car crossed the finish line entering the pit
+    df["is_in_lap"] = df["crossing_finish_line_in_pit"] == "B"
+
+    # flag the lap immediately after an in-lap for each car
+    df["is_out_lap"] = (
+        df.groupby("number")["is_in_lap"]
+        .shift(1)
+        .fillna(False)
+    )
+
     return df
 
 def parse_lap_time(laptime: str) -> float:
