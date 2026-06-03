@@ -232,3 +232,144 @@ def print_pace_comparison(eval_results: dict) -> None:
     print(f"Model (linear regression):  {model_rmse:.4f}s")
     print(f"Improvement:                {improvement:+.1f}%  ({baseline_rmse - model_rmse:+.4f}s)")
     print("=============================")
+
+
+def cross_validate_pit(
+    df: pd.DataFrame,
+    feature_columns: list[str],
+    target_column: str = "is_in_lap",
+    groups: np.ndarray | pd.Series | None = None,
+    estimator=None,
+    n_splits: int = 5,
+    random_state: int = 42,
+) -> dict:
+    """
+    Cross-validate a pit classifier using GroupKFold.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Phase 1 output containing features and target.
+    feature_columns : list[str]
+        Columns to use as features (must already be pre-selected, no leakage).
+    target_column : str, default='is_in_lap'
+        Name of the binary pit label column.
+    groups : array-like, optional
+        Group labels for GroupKFold. If None, attempts to use df['race_id'].
+        Passing groups explicitly is preferred -- it makes the grouping visible
+        at the call site rather than hidden inside this function.
+    estimator : sklearn estimator or Pipeline, optional
+        If provided, used as the classifier. Must expose predict_proba.
+        If None, a default LogisticRegression with balanced class weight is used.
+        Note: if the estimator is a Pipeline with a ColumnTransformer, X is
+        passed as a DataFrame (with column names intact) rather than a numpy
+        array, so the transformer can reference columns by name.
+    n_splits : int, default=5
+        Number of folds for GroupKFold. Requires at least n_splits unique groups.
+    random_state : int, default=42
+        Seed for reproducibility.
+
+    Returns
+    -------
+    dict with keys:
+        'model_metrics'    : dict with precision, recall, f1, roc_auc, brier
+        'dummy_metrics'    : same keys for DummyClassifier(strategy='most_frequent')
+        'model_predictions': array of cross-validated predicted probabilities
+        'dummy_predictions': array of dummy predicted probabilities
+        'true_labels'      : array of true y values
+    """
+    from sklearn.dummy import DummyClassifier
+    from sklearn.metrics import brier_score_loss, precision_recall_fscore_support, roc_auc_score
+
+    # keep X as a DataFrame so that Pipeline + ColumnTransformer can reference
+    # columns by name. converting to numpy here would silently break any
+    # estimator that uses a ColumnTransformer internally.
+    X = df[feature_columns].copy()
+    y = df[target_column].astype(bool).values
+
+    if groups is None:
+        if "race_id" not in df.columns:
+            raise KeyError(
+                "No groups provided and 'race_id' column not found in DataFrame. "
+                "Pass groups explicitly or ensure the DataFrame has a 'race_id' column."
+            )
+        groups = df["race_id"].values
+    else:
+        groups = np.asarray(groups)
+
+    if estimator is None:
+        from sklearn.linear_model import LogisticRegression
+        estimator = LogisticRegression(
+            class_weight="balanced",
+            random_state=random_state,
+            max_iter=1000,
+        )
+
+    dummy = DummyClassifier(strategy="most_frequent", random_state=random_state)
+
+    gkf = GroupKFold(n_splits=n_splits)
+
+    # collect out-of-fold predicted probabilities by iterating folds manually.
+    # cross_val_predict would be cleaner but does not accept a groups argument
+    # in all sklearn versions when method='predict_proba', so we loop explicitly
+    # to be safe and to keep the two estimators on identical fold splits.
+    model_proba = np.zeros(len(X))
+    dummy_proba = np.zeros(len(X))
+
+    for train_idx, val_idx in gkf.split(X, y, groups):
+        X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
+        y_train = y[train_idx]
+
+        estimator.fit(X_train, y_train)
+        dummy.fit(X_train, y_train)
+
+        model_proba[val_idx] = estimator.predict_proba(X_val)[:, 1]
+        dummy_proba[val_idx] = dummy.predict_proba(X_val)[:, 1]
+
+    # threshold at 0.5 for precision/recall/f1 -- note that this threshold
+    # choice matters a lot for imbalanced data. the roc_auc and brier scores
+    # below are threshold-independent and are therefore the more honest
+    # summary of model quality.
+    model_pred = model_proba >= 0.5
+    dummy_pred = dummy_proba >= 0.5
+
+    model_prec, model_rec, model_f1, _ = precision_recall_fscore_support(
+        y, model_pred, average="binary", zero_division=0
+    )
+    dummy_prec, dummy_rec, dummy_f1, _ = precision_recall_fscore_support(
+        y, dummy_pred, average="binary", zero_division=0
+    )
+
+    model_auc = roc_auc_score(y, model_proba)
+
+    # DummyClassifier(strategy='most_frequent') always predicts the same class,
+    # so dummy_proba is a constant array. roc_auc_score requires discriminative
+    # variation to produce a meaningful value -- we assign 0.5 explicitly since
+    # random chance is the correct characterisation of a non-discriminating baseline.
+    try:
+        dummy_auc = roc_auc_score(y, dummy_proba)
+    except ValueError:
+        dummy_auc = 0.5
+
+    model_brier = brier_score_loss(y, model_proba)
+    dummy_brier = brier_score_loss(y, dummy_proba)
+
+    return {
+        "model_metrics": {
+            "precision": float(model_prec),
+            "recall":    float(model_rec),
+            "f1":        float(model_f1),
+            "roc_auc":   float(model_auc),
+            "brier":     float(model_brier),
+        },
+        "dummy_metrics": {
+            "precision": float(dummy_prec),
+            "recall":    float(dummy_rec),
+            "f1":        float(dummy_f1),
+            "roc_auc":   float(dummy_auc),
+            "brier":     float(dummy_brier),
+        },
+        "model_predictions": model_proba,
+        "dummy_predictions": dummy_proba,
+        "true_labels":       y,
+    }
