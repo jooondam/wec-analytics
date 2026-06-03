@@ -20,4 +20,10 @@ SESSION_MAP = {
         year=2019,
         duration_hours=6,
     ),
+    "201810141100_Race": SessionMeta(
+        race_id="FUJI_2018_RACE",
+        track="Fuji Speedway",
+        year=2018,
+        duration_hours=6,
+    ),
 }
