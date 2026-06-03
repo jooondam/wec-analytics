@@ -2,48 +2,12 @@ import pandas as pd
 import numpy as np
 
 def calculate_driver_stint(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Assign a stint number to each lap based on driver changes.
-
-    A new stint is detected whenever the ``car_driver`` value differs from the
-    previous row, using a cumulative sum of those change flags.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Cleaned session DataFrame containing a ``car_driver`` column.
-
-    Returns
-    -------
-    pd.DataFrame
-        Copy of the input with two additional columns: ``stint_change_detected``
-        (bool) and ``stint_number`` (int, 1-indexed).
-    """
     df_new = df.copy()
-    df_new['stint_change_detected'] = df['car_driver'] != df['car_driver'].shift(periods=1)
+    df_new['stint_change_detected'] = df['car_driver'] != df['car_driver'].shift(periods=1) 
     df_new['stint_number'] = df_new['stint_change_detected'].cumsum()
     return df_new
-
+    
 def detect_outliers(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Flag outlier laps using the Tukey IQR fence method.
-
-    The IQR fences are computed on clean laps only (laps not crossing the finish
-    line in the pit and with no recorded pit time), then applied to all laps so
-    that pit-lane and safety-car laps are also flagged.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Cleaned session DataFrame containing ``lap_time``,
-        ``crossing_finish_line_in_pit``, and ``pit_time`` columns.
-
-    Returns
-    -------
-    pd.DataFrame
-        Copy of the input with an additional boolean ``is_outlier`` column.
-        ``True`` indicates the lap falls outside the 1.5 × IQR fences.
-    """
     df_new = df.copy()
     clean_laps = df_new[(df_new['crossing_finish_line_in_pit'] != 'B') & (df_new['pit_time'].isna() | (df_new['pit_time'] == 0))].copy()
     Q1 = clean_laps['lap_time'].quantile(0.25)
@@ -59,27 +23,6 @@ def detect_outliers(df: pd.DataFrame) -> pd.DataFrame:
     return df_new
 
 def calculate_driver_stint_stats(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute per-stint summary statistics from clean laps.
-
-    Outlier laps (safety car, pit-lane crossings) are excluded before
-    aggregation. Degradation slope is estimated via linear regression of
-    lap time against lap position within the stint; stints with fewer than
-    three clean laps receive ``None`` for slope.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Session DataFrame with ``is_outlier``, ``stint_number``, and
-        ``lap_time`` columns. Must have had ``detect_outliers`` and
-        ``calculate_driver_stint`` applied first.
-
-    Returns
-    -------
-    pd.DataFrame
-        One row per stint with columns: ``stint_number``, ``avg_lap``,
-        ``fastest_lap``, and ``degradation_slope`` (seconds per lap).
-    """
     # filter out outlier laps (safety car, pit laps) before aggregating
     inlier_laps = df[~df['is_outlier']].copy()
 
