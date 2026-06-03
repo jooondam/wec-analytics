@@ -26,4 +26,16 @@ SESSION_MAP = {
         year=2018,
         duration_hours=6,
     ),
+    "201811181100_Race": SessionMeta(
+        race_id="SHANGHAI_2018_RACE",
+        track="Shanghai International Circuit",
+        year=2018,
+        duration_hours=6,
+    ),
+    "201808191200_Race": SessionMeta(
+        race_id="SILVERSTONE_2018_RACE",
+        track="Silverstone",
+        year=2018,
+        duration_hours=6,
+    ),
 }
