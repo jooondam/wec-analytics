@@ -75,11 +75,12 @@ def test_predict_pit_curve_probabilities_in_unit_interval(synthetic_laps, fitted
 def test_predict_pit_window_returns_first_lap_above_threshold(synthetic_laps, fitted_pipeline):
     """predict_pit_window must return the lap_number of the first lap >= threshold, as int."""
     pipeline, feature_columns = fitted_pipeline
-    # use threshold=0.0 so every lap qualifies -- the answer must be the first lap_number
+    # threshold=0.0 guarantees every lap qualifies, so the result must be
+    # the smallest lap_number in the DataFrame regardless of row ordering.
     result = predict_pit_window(pipeline, synthetic_laps, feature_columns, threshold=0.0)
     assert result is not None
     assert isinstance(result, int), f"Expected int, got {type(result)}"
-    assert result == int(synthetic_laps["lap_number"].iloc[0])
+    assert result == int(synthetic_laps["lap_number"].min())
 
 
 def test_predict_pit_window_returns_none_when_threshold_unreachable(synthetic_laps, fitted_pipeline):
