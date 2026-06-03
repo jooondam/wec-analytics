@@ -1,4 +1,6 @@
+import re
 from pathlib import Path
+
 import pandas as pd
 import requests
 from urllib.parse import unquote
@@ -65,7 +67,34 @@ def fetch_session(url: str, cache_dir: str | Path = "cache") -> pd.DataFrame:
                 return read_csv_with_fallback(cache_path)
             else:
                 raise ConnectionError(f"Failed to connect: {url} - status code {response.status_code}")
-        except requests.RequestException as e:          
-                raise ConnectionError(f"Failed to download: {url} - status code {e}")
-        
+        except requests.RequestException as e:
+            raise ConnectionError(f"Failed to download: {url} - {e}")
+
+
+def extract_session_id(url: str) -> str:
+    """Extract the session_id directory segment from an Al Kamel Systems URL.
+
+    Parameters
+    ----------
+    url : str
+        Al Kamel Systems CSV URL. The session_id is the path segment matching
+        YYYYMMDDHHMM_SessionType, e.g. '201905041330_Race'.
+
+    Returns
+    -------
+    str
+        Session ID string, e.g. '201905041330_Race'.
+
+    Raises
+    ------
+    ValueError
+        If no matching segment is found in the URL.
+    """
+    match = re.search(r'/(\d{12}_\w+)/', unquote(url))
+    if not match:
+        raise ValueError(
+            f"Could not extract session_id from URL: {url}\n"
+            "Expected a path segment matching YYYYMMDDHHMM_SessionType."
+        )
+    return match.group(1)
         

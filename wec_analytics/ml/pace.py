@@ -135,17 +135,20 @@ def predict_pace(
     """
     model, _ = load_model(model_path)
 
-    # prepare_pace_features expects lap_time to exist for the y extraction,
-    # but we may be predicting on laps where lap_time is unknown — add a
-    # dummy column if missing so the feature selector doesn't raise
     laps = laps.copy()
     if "lap_time" not in laps.columns:
         laps["lap_time"] = float("nan")
 
     X, _ = prepare_pace_features(laps)
-    predictions = model.predict(X)
 
-    return pd.Series(predictions, index=laps.index, name="predicted_pace")
+    # predict only on rows where all features are present; return NaN for the
+    # rest (e.g. the first lap of each stint where rolling_pace is undefined)
+    valid = X.notna().all(axis=1)
+    result = pd.Series(float("nan"), index=laps.index, name="predicted_pace")
+    if valid.any():
+        result.loc[valid] = model.predict(X.loc[valid])
+
+    return result
 
 
 def predict_pace_session(
