@@ -7,11 +7,15 @@ interest — underperforming the model means slower than expected,
 overperforming means faster.
 """
 
+from pathlib import Path
+
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
+
+from wec_analytics.ml.persistence import load_model
 
 
 DIRTY_FLAG_COLS = ["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]
@@ -102,3 +106,79 @@ def train_pace_model(laps: pd.DataFrame) -> Pipeline:
 
     pipeline.fit(X, y)
     return pipeline
+
+
+def predict_pace(
+    model_path: str | Path,
+    laps: pd.DataFrame,
+) -> pd.Series:
+    """
+    Predict expected lap times for every row in laps using a saved model.
+
+    Returns a Series of predicted lap times aligned to the input DataFrame's
+    index, so it can be assigned back as a column: laps["predicted_pace"] = ...
+    The residual (laps["lap_time"] - predicted) is usually more interesting
+    than the prediction itself — negative means faster than expected.
+
+    Parameters
+    ----------
+    model_path : str or Path
+        Path to a joblib model file saved by save_model.
+    laps : pd.DataFrame
+        Feature-engineered lap DataFrame. Does not need to be filtered to
+        clean laps — the caller controls what gets predicted on.
+
+    Returns
+    -------
+    pd.Series
+        Predicted lap times, same index as laps.
+    """
+    model, _ = load_model(model_path)
+
+    # prepare_pace_features expects lap_time to exist for the y extraction,
+    # but we may be predicting on laps where lap_time is unknown — add a
+    # dummy column if missing so the feature selector doesn't raise
+    laps = laps.copy()
+    if "lap_time" not in laps.columns:
+        laps["lap_time"] = float("nan")
+
+    X, _ = prepare_pace_features(laps)
+    predictions = model.predict(X)
+
+    return pd.Series(predictions, index=laps.index, name="predicted_pace")
+
+
+def predict_pace_session(
+    model_path: str | Path,
+    laps: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Predict expected lap times for a full session and return an annotated DataFrame.
+
+    Adds two columns to a copy of the input: 'predicted_pace' and 'pace_residual'.
+    A positive residual means the car was slower than the model expected;
+    negative means faster — the sign convention matches how a race engineer
+    would think about it ("we're losing half a second to the model").
+
+    Parameters
+    ----------
+    model_path : str or Path
+        Path to a joblib model file saved by save_model.
+    laps : pd.DataFrame
+        Full session lap DataFrame from build_lap_features. All laps are
+        predicted on; filtering to clean laps is the caller's decision.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of laps with 'predicted_pace' and 'pace_residual' columns added.
+    """
+    result = laps.copy()
+    result["predicted_pace"] = predict_pace(model_path, laps)
+
+    # residual = actual - predicted:
+    # positive → slower than model expected (bad)
+    # negative → faster than model expected (good or suspicious)
+    result["pace_residual"] = result["lap_time"] - result["predicted_pace"]
+
+    return result
