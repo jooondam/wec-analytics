@@ -53,7 +53,7 @@ result = detect_undercut(df, car_number=8, rival_car=50)
 
 **Outlier detection** uses the Tukey IQR fence method. The fences are fitted on clean racing laps only (no pit-lane crossings, no recorded pit time), then applied to the full dataset so that safety car laps, pit laps, and formation laps all get flagged. `detect_outliers` must be run before any pace analysis — `detect_traffic_lap` and `compare_class_pace` will raise a `KeyError` if the `is_outlier` column is absent.
 
-**Traffic laps** are identified by comparing a car's lap time against its own average clean pace. A lap more than 3% slower than that average is treated as impeded — a threshold derived from WEC baseline data.
+**Traffic laps** are identified by comparing a car's lap time against its own average clean pace. A lap more than 3% slower than that average is treated as impeded, a threshold derived from WEC baseline data.
 
 **Undercut detection** checks whether a car pitted before a rival, ran faster during the window between the two pit stops, and came out ahead. All three conditions are evaluated separately so you can inspect the pace and position evidence independently.
 
