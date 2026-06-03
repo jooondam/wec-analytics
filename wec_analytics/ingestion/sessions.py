@@ -38,4 +38,10 @@ SESSION_MAP = {
         year=2018,
         duration_hours=6,
     ),
+    "201903151600_Race": SessionMeta(
+        race_id="SEBRING_2019_RACE",
+        track="Sebring",
+        year=2019,
+        duration_hours=8,
+    ),
 }
