@@ -373,3 +373,58 @@ def cross_validate_pit(
         "dummy_predictions": dummy_proba,
         "true_labels":       y,
     }
+
+
+def print_pit_comparison(results: dict) -> None:
+    """
+    Print a side-by-side comparison of model vs dummy classifier for pit prediction.
+
+    Parameters
+    ----------
+    results : dict
+        Return value from cross_validate_pit, containing 'model_metrics' and
+        'dummy_metrics' keys.
+    """
+    model = results["model_metrics"]
+    dummy = results["dummy_metrics"]
+
+    # F1 improvement -- higher is better. when the dummy f1 is zero (which it
+    # always will be for most_frequent on an imbalanced dataset), we cannot
+    # compute a percentage so we cap the display string instead of printing
+    # "infinite" mid-sentence, which reads awkwardly.
+    if dummy["f1"] == 0:
+        f1_str = ">999%" if model["f1"] > 0 else "+0.0%"
+    else:
+        f1_improvement = (model["f1"] - dummy["f1"]) / dummy["f1"] * 100
+        f1_str = f"+{f1_improvement:.1f}%"
+
+    # Brier improvement -- lower is better, so improvement is reduction relative
+    # to dummy. the sign convention is deliberately inverted compared to f1:
+    # a positive improvement means the model's brier is smaller than the dummy's.
+    if dummy["brier"] == 0:
+        brier_str = "+0.0%"
+    else:
+        brier_improvement = (dummy["brier"] - model["brier"]) / dummy["brier"] * 100
+        brier_str = f"+{brier_improvement:.1f}%"
+
+    print("\n" + "=" * 70)
+    print("Pit Prediction: Model vs Dummy Classifier (majority class)")
+    print("=" * 70)
+    print(f"{'Metric':<15} {'Model':>12} {'Dummy':>12} {'Improvement':>15}")
+    print("-" * 70)
+    print(f"{'Precision':<15} {model['precision']:>12.3f} {dummy['precision']:>12.3f} {'':>15}")
+    print(f"{'Recall':<15} {model['recall']:>12.3f} {dummy['recall']:>12.3f} {'':>15}")
+    print(f"{'F1':<15} {model['f1']:>12.3f} {dummy['f1']:>12.3f} {f1_str:>15}")
+    print(f"{'ROC AUC':<15} {model['roc_auc']:>12.3f} {dummy['roc_auc']:>12.3f} {'':>15}")
+    print(f"{'Brier':<15} {model['brier']:>12.3f} {dummy['brier']:>12.3f} {brier_str:>15}")
+    print("=" * 70)
+    print("Interpretation:")
+    print(f"  - F1 improvement of {f1_str} over dummy means the model actually detects pit laps.")
+    print(f"  - Brier improvement of {brier_str} means probability estimates are better calibrated.")
+    if model["recall"] < 0.1:
+        print("  - Warning: recall is very low -- the model is missing most pit laps.")
+    elif model["precision"] < 0.3:
+        print("  - Warning: precision is low -- too many false alarms.")
+    else:
+        print("  - Model provides useful pit probability estimates.")
+    print("=" * 70)
