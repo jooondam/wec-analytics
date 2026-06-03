@@ -1,1 +1,17 @@
 WEC_ANALYTICS.md
+
+# downloaded session data and trained model artefacts
+cache/
+models_trained/
+
+# python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# virtual environments
+.venv/
+.venv-1/
+
+# notebook checkpoints
+.ipynb_checkpoints/
