@@ -98,7 +98,7 @@ def get_session(race_id: str) -> pd.DataFrame:
 
 st.set_page_config(
     page_title="WEC Analytics",
-    page_icon=":racing_car:",
+    page_icon=None,
     layout="wide",
 )
 
