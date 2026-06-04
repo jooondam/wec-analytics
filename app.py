@@ -163,7 +163,7 @@ tab_overview, tab_pace, tab_pit = st.tabs(
 # ── Tab 1: Race Overview ────────────────────────────────────────────────────
 
 with tab_overview:
-    st.subheader(f"{RACE_LABELS[selected_race_id]} -- Race Overview")
+    st.subheader(f"{RACE_LABELS[selected_race_id]}: Race Overview")
 
     col_a, col_b, col_c, col_d = st.columns(4)
     col_a.metric("Total laps", f"{len(laps_filtered):,}")
@@ -199,7 +199,7 @@ with tab_overview:
     st.plotly_chart(fig_scatter, use_container_width=True)
 
     # Stint degradation for the selected car
-    st.subheader(f"Car #{selected_car} -- stint degradation")
+    st.subheader(f"Car #{selected_car}: stint degradation")
 
     car_clean = car_laps[
         ~car_laps[["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]].any(axis=1)
@@ -218,7 +218,7 @@ with tab_overview:
                 "lap_time": "Lap time (s)",
                 "stint_id": "Stint",
             },
-            title=f"Car #{selected_car} -- lap time vs stint age",
+            title=f"Car #{selected_car}: lap time vs stint age",
             height=380,
         )
         fig_deg.update_traces(marker=dict(size=6))
@@ -227,7 +227,7 @@ with tab_overview:
 # ── Tab 2: Pace Residuals ───────────────────────────────────────────────────
 
 with tab_pace:
-    st.subheader(f"Car #{selected_car} -- Pace Residuals")
+    st.subheader(f"Car #{selected_car}: Pace Residuals")
 
     if pace_model is None:
         st.error("Train a pace model first: `python scripts/train_models.py`")
@@ -270,7 +270,7 @@ with tab_pace:
                 line=dict(width=2, dash="dot"),
             ))
             fig_pace.update_layout(
-                title=f"Car #{selected_car} -- actual vs predicted lap time",
+                title=f"Car #{selected_car}: actual vs predicted lap time",
                 xaxis_title="Lap",
                 yaxis_title="Lap time (s)",
                 height=380,
@@ -291,7 +291,7 @@ with tab_pace:
                 name="Residual",
             ))
             fig_res.update_layout(
-                title="Pace residual (actual - predicted) -- red = slower than model",
+                title="Pace residual (actual - predicted)  |  red = slower than model",
                 xaxis_title="Lap",
                 yaxis_title="Residual (s)",
                 height=300,
@@ -302,7 +302,7 @@ with tab_pace:
 # ── Tab 3: Pit Probability ──────────────────────────────────────────────────
 
 with tab_pit:
-    st.subheader(f"Car #{selected_car} -- Pit Probability")
+    st.subheader(f"Car #{selected_car}: Pit Probability")
 
     if pit_model is None:
         st.error("Train a pit model first: `python scripts/train_models.py`")
@@ -368,7 +368,7 @@ with tab_pit:
                 ))
 
             fig_pit.update_layout(
-                title=f"Car #{selected_car} -- pit probability by lap",
+                title=f"Car #{selected_car}: pit probability by lap",
                 xaxis_title="Lap",
                 yaxis_title="P(pit this lap)",
                 yaxis=dict(range=[0, 1]),
