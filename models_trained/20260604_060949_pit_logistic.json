@@ -1,0 +1,33 @@
+{
+  "save_timestamp": "2026-06-04T06:09:49.657224+00:00",
+  "sklearn_version": "1.9.0",
+  "model_type": "pit_window_classifier",
+  "estimator": "logistic_regression",
+  "feature_columns": [
+    "stint_age",
+    "rolling_pace",
+    "lap_number",
+    "car_class"
+  ],
+  "numeric_features": [
+    "stint_age",
+    "rolling_pace",
+    "lap_number"
+  ],
+  "categorical_features": [
+    "car_class"
+  ],
+  "training_races": [
+    "FUJI_2018_RACE",
+    "SEBRING_2019_RACE",
+    "SHANGHAI_2018_RACE",
+    "SILVERSTONE_2018_RACE",
+    "SPA_2019_RACE"
+  ],
+  "n_training_laps": 26130,
+  "cv_f1": 0.06552143067163335,
+  "cv_roc_auc": NaN,
+  "cv_brier": 0.4411758477451343,
+  "cv_precision": 0.03469290579749233,
+  "cv_recall": 0.6081095399712421
+}
