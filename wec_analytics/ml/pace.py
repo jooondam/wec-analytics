@@ -8,13 +8,19 @@ Targeting the deviation (lap_time - rolling_pace) rather than absolute
 lap_time makes the model track-agnostic: a 5s positive deviation at
 Le Mans and a 5s positive deviation at Spa mean the same thing to a
 race engineer, even though the absolute lap times differ by 100s.
+
+HistGradientBoostingRegressor is used as the estimator because:
+- It captures non-linear interactions (e.g. deg_slope compounds with stint_age).
+- OrdinalEncoder + categorical_features handles car_class without expanding
+  dimensionality via one-hot encoding.
+- It natively handles any NaN features that remain after feature engineering.
 """
 
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OrdinalEncoder
 
 from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 
@@ -94,18 +100,31 @@ def train_pace_model(laps: pd.DataFrame) -> Pipeline:
     # prepare feature matrix and target
     X, y = prepare_pace_features(laps)
 
-    # encode car_class with one-hot, pass numeric columns through unchanged
+    # OrdinalEncoder maps car_class strings to integers so HistGBT can treat
+    # it as a native categorical (avoids the dimensionality expansion of OHE
+    # and lets the model split on class boundaries more efficiently).
+    # After the ColumnTransformer the column order is:
+    #   [car_class_encoded, stint_age, lap_number, deg_slope]
+    # categorical_features masks the first column as categorical for HistGBT.
     preprocessor = ColumnTransformer(
         transformers=[
-            ("cat", OneHotEncoder(drop="first"), ["car_class"])
+            ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), ["car_class"]),
         ],
-        remainder="passthrough"
+        remainder="passthrough",
     )
 
-    # build and fit pipeline
+    estimator = HistGradientBoostingRegressor(
+        categorical_features=[True, False, False, False],
+        max_iter=300,
+        learning_rate=0.05,
+        max_depth=4,
+        min_samples_leaf=20,
+        random_state=42,
+    )
+
     pipeline = Pipeline([
         ("preprocessor", preprocessor),
-        ("regressor", LinearRegression())
+        ("regressor", estimator),
     ])
 
     pipeline.fit(X, y)

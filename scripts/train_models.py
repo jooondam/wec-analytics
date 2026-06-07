@@ -113,7 +113,7 @@ def main() -> None:
         pace_path,
         metadata={
             "model_type": "pace_regression",
-            "estimator": "LinearRegression",
+            "estimator": "HistGradientBoostingRegressor",
             "features": ["stint_age", "lap_number", "car_class", "deg_slope"],
             "target": "lap_time_minus_rolling_pace",
             "training_races": sorted(all_laps["race_id"].unique().tolist()),
@@ -138,7 +138,7 @@ def main() -> None:
         feature_columns=PIT_FEATURE_COLUMNS,
         numeric_features=PIT_NUMERIC_FEATURES,
         categorical_features=PIT_CATEGORICAL_FEATURES,
-        estimator_name="logistic_regression",
+        estimator_name="hist_gradient_boosting",
         group_kfold_splits=n_races,
     )
 
@@ -156,7 +156,7 @@ def main() -> None:
         pit_path,
         metadata={
             "model_type": "pit_window_classifier",
-            "estimator": pit_result["estimator_name"],
+            "estimator": "HistGradientBoostingClassifier",
             "feature_columns": PIT_FEATURE_COLUMNS,
             "numeric_features": PIT_NUMERIC_FEATURES,
             "categorical_features": PIT_CATEGORICAL_FEATURES,

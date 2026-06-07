@@ -1,8 +1,8 @@
 {
-  "save_timestamp": "2026-06-07T16:16:15.377747+00:00",
+  "save_timestamp": "2026-06-07T16:53:23.139717+00:00",
   "sklearn_version": "1.9.0",
   "model_type": "pace_regression",
-  "estimator": "LinearRegression",
+  "estimator": "HistGradientBoostingRegressor",
   "features": [
     "stint_age",
     "lap_number",
@@ -19,7 +19,7 @@
     "SPA_2019_RACE"
   ],
   "n_clean_laps": 31437,
-  "cv_rmse_mean": 2.3136330050265705,
-  "cv_rmse_std": 1.1103723128867358,
+  "cv_rmse_mean": 1.9757074307274431,
+  "cv_rmse_std": 1.0038262239207891,
   "baseline_rmse_mean": 1.9503719438987412
 }

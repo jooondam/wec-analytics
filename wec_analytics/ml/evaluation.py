@@ -229,7 +229,7 @@ def print_pace_comparison(eval_results: dict) -> None:
 
     print("\n=== Pace Model Evaluation ===")
     print(f"Baseline (mean predictor):  {baseline_rmse:.4f}s")
-    print(f"Model (linear regression):  {model_rmse:.4f}s")
+    print(f"Model (HistGBT regressor):  {model_rmse:.4f}s")
     print(f"Improvement:                {improvement:+.1f}%  ({baseline_rmse - model_rmse:+.4f}s)")
     print("=============================")
 

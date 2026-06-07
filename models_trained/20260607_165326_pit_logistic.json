@@ -1,8 +1,8 @@
 {
-  "save_timestamp": "2026-06-07T16:16:15.509943+00:00",
+  "save_timestamp": "2026-06-07T16:53:26.120275+00:00",
   "sklearn_version": "1.9.0",
   "model_type": "pit_window_classifier",
-  "estimator": "logistic_regression",
+  "estimator": "HistGradientBoostingClassifier",
   "feature_columns": [
     "stint_age",
     "rolling_pace",
@@ -26,9 +26,9 @@
     "SPA_2019_RACE"
   ],
   "n_training_laps": 37116,
-  "cv_f1": 0.04616355931471929,
+  "cv_f1": 0.06877522146178862,
   "cv_roc_auc": NaN,
-  "cv_brier": 0.37344024926741687,
-  "cv_precision": 0.028830755302015537,
-  "cv_recall": 0.1851231132473227
+  "cv_brier": 0.15045535997108828,
+  "cv_precision": 0.1146026165970691,
+  "cv_recall": 0.08038496298790958
 }

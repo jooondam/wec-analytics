@@ -11,12 +11,12 @@ import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, precision_recall_fscore_support, roc_auc_score
 from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
 
 # columns that must never appear as features -- either they are the label,
@@ -137,7 +137,8 @@ def train_pit_model(
     categorical_features : list[str]
         Subset of feature_columns to encode with OneHotEncoder.
     estimator_name : str, default='logistic_regression'
-        One of 'logistic_regression' or 'random_forest'.
+        One of 'logistic_regression', 'random_forest', or
+        'hist_gradient_boosting'.
     group_kfold_splits : int, default=5
         Number of folds. Requires at least this many unique race_id values.
     random_state : int, default=42
@@ -154,48 +155,73 @@ def train_pit_model(
     X, y = prepare_pit_features(df, feature_columns)
     groups = df["race_id"].values
 
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", StandardScaler(), numeric_features),
-            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical_features),
-        ],
-        remainder="drop",
-    )
+    if estimator_name == "hist_gradient_boosting":
+        # HistGBT is scale-invariant (no StandardScaler needed) and handles
+        # categoricals natively via OrdinalEncoder + categorical_features.
+        # Output column order: [cat cols...] + [num cols...]
+        n_cat = len(categorical_features)
+        n_num = len(numeric_features)
+        cat_mask = [True] * n_cat + [False] * n_num
 
-    if estimator_name == "logistic_regression":
-        # class_weight='balanced' reweights each sample so the minority class
-        # (pit laps, ~5-10% of laps) receives proportionally higher penalty on
-        # misclassification. without this, the model learns "always predict no-pit"
-        # and still achieves >90% accuracy while being completely useless.
-        estimator = LogisticRegression(
-            class_weight="balanced",
-            random_state=random_state,
-            max_iter=1000,
-            solver="lbfgs",
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_features),
+                ("num", "passthrough", numeric_features),
+            ],
+            remainder="drop",
         )
-
-    elif estimator_name == "random_forest":
-        base_estimator = RandomForestClassifier(
-            n_estimators=100,
-            class_weight="balanced",
+        estimator = HistGradientBoostingClassifier(
+            categorical_features=cat_mask,
+            max_iter=300,
+            learning_rate=0.05,
+            max_depth=4,
+            min_samples_leaf=20,
             random_state=random_state,
-        )
-        # random forest probabilities are skewed towards 0 and 1 because trees
-        # vote by majority. CalibratedClassifierCV with Platt scaling (sigmoid)
-        # corrects this. known limitation: the final refit below uses cv=3 with
-        # random folds, which does not respect race_id groups. acceptable for now
-        # but should be replaced with a grouped calibration split in a future iteration.
-        estimator = CalibratedClassifierCV(
-            base_estimator,
-            method="sigmoid",
-            cv=3,
         )
 
     else:
-        raise ValueError(
-            f"Unknown estimator_name '{estimator_name}'. "
-            "Choose 'logistic_regression' or 'random_forest'."
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ("num", StandardScaler(), numeric_features),
+                ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical_features),
+            ],
+            remainder="drop",
         )
+
+        if estimator_name == "logistic_regression":
+            # class_weight='balanced' reweights each sample so the minority class
+            # (pit laps, ~5-10% of laps) receives proportionally higher penalty on
+            # misclassification. without this, the model learns "always predict no-pit"
+            # and still achieves >90% accuracy while being completely useless.
+            estimator = LogisticRegression(
+                class_weight="balanced",
+                random_state=random_state,
+                max_iter=1000,
+                solver="lbfgs",
+            )
+
+        elif estimator_name == "random_forest":
+            base_estimator = RandomForestClassifier(
+                n_estimators=100,
+                class_weight="balanced",
+                random_state=random_state,
+            )
+            # random forest probabilities are skewed towards 0 and 1 because trees
+            # vote by majority. CalibratedClassifierCV with Platt scaling (sigmoid)
+            # corrects this. known limitation: the final refit below uses cv=3 with
+            # random folds, which does not respect race_id groups. acceptable for now
+            # but should be replaced with a grouped calibration split in a future iteration.
+            estimator = CalibratedClassifierCV(
+                base_estimator,
+                method="sigmoid",
+                cv=3,
+            )
+
+        else:
+            raise ValueError(
+                f"Unknown estimator_name '{estimator_name}'. "
+                "Choose 'logistic_regression', 'random_forest', or 'hist_gradient_boosting'."
+            )
 
     pipeline = Pipeline(steps=[
         ("preprocessor", preprocessor),
