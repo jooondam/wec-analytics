@@ -29,6 +29,7 @@ from wec_analytics.ml.anomaly import (
     detect_lap_anomalies,
 )
 from wec_analytics.ml.association import mine_strategy_rules
+from wec_analytics.ml.reduction import explained_variance_ratio, reduce_to_2d
 from wec_analytics.ml.degradation import MIN_STINT_LAPS, compare_degradation, enrich_with_deg_slope, fit_all_stints
 from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 from wec_analytics.ml.pace import predict_pace_session
@@ -96,8 +97,18 @@ def get_degradation_summary(_laps: pd.DataFrame) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner="Analysing race strategies...")
-def get_strategy_clusters(_laps: pd.DataFrame, method: str, n_clusters) -> tuple:
-    return cluster_strategies(_laps, n_clusters=n_clusters, method=method)
+def get_strategy_clusters(_laps: pd.DataFrame, method: str, n_clusters, projection: str) -> tuple:
+    return cluster_strategies(_laps, n_clusters=n_clusters, method=method, projection=projection)
+
+
+@st.cache_data(show_spinner="Projecting features to 2D...")
+def get_2d_projection(_df: pd.DataFrame, feature_cols: tuple, method: str) -> pd.DataFrame:
+    feat = _df[list(feature_cols)].fillna(0.0)
+    coords, transformer = reduce_to_2d(feat, method=method)
+    ev = explained_variance_ratio(transformer)
+    coords["ev_x"] = float(ev[0]) if ev is not None else None
+    coords["ev_y"] = float(ev[1]) if ev is not None else None
+    return coords
 
 
 @st.cache_data(show_spinner="Running anomaly detection...")
@@ -527,9 +538,9 @@ with tab_deg:
 with tab_cluster:
     st.subheader(f"{RACE_LABELS[selected_race_id]}: Strategy Clusters")
 
-    col_m, col_k = st.columns([1, 2])
+    col_m, col_k, col_proj = st.columns([1, 2, 1])
     with col_m:
-        cluster_method = st.radio("Method", ["kmeans", "dbscan"], horizontal=True)
+        cluster_method = st.radio("Clustering", ["kmeans", "dbscan"], horizontal=True)
     with col_k:
         if cluster_method == "kmeans":
             auto_k = st.checkbox("Auto-select k (silhouette)", value=True)
@@ -537,13 +548,17 @@ with tab_cluster:
         else:
             n_clusters_input = "auto"
             st.caption("DBSCAN auto-tunes epsilon from k-NN distances. Cluster -1 = outlier cars.")
+    with col_proj:
+        projection_method = st.radio("Projection", ["PCA", "UMAP"], horizontal=True,
+                                     help="PCA: linear, fast. UMAP: preserves local structure better.")
+    cluster_projection = projection_method.lower()
 
     n_cars = laps["car_number"].nunique()
     if n_cars < MIN_CARS_TO_CLUSTER:
         st.info(f"Need at least {MIN_CARS_TO_CLUSTER} cars to cluster. This session has {n_cars}.")
     else:
         try:
-            labels_df, meta = get_strategy_clusters(laps, cluster_method, n_clusters_input)
+            labels_df, meta = get_strategy_clusters(laps, cluster_method, n_clusters_input, cluster_projection)
         except Exception as exc:
             st.error(f"Clustering failed: {exc}")
             labels_df = None
@@ -560,6 +575,13 @@ with tab_cluster:
             pca_plot["cluster_str"] = pca_plot["cluster_label"].astype(str)
 
             ev = meta["pca_explained_variance"]
+            if ev is not None:
+                x_label = f"PC1 ({ev[0]:.0%} var)"
+                y_label = f"PC2 ({ev[1]:.0%} var)"
+            else:
+                x_label = "UMAP-1"
+                y_label = "UMAP-2"
+
             fig_pca = px.scatter(
                 pca_plot,
                 x="PC1", y="PC2",
@@ -575,8 +597,8 @@ with tab_cluster:
                     "marker_size": False,
                     "is_selected": False,
                 },
-                labels={"cluster_str": "Cluster", "PC1": f"PC1 ({ev[0]:.0%})", "PC2": f"PC2 ({ev[1]:.0%})"},
-                title=f"PCA projection of strategy features ({meta['n_clusters']} clusters, method={cluster_method})",
+                labels={"cluster_str": "Cluster", "PC1": x_label, "PC2": y_label},
+                title=f"{cluster_projection.upper()} projection of strategy features ({meta['n_clusters']} clusters, clustering={cluster_method})",
                 height=460,
             )
             fig_pca.update_traces(marker=dict(line=dict(width=1, color="white")))
@@ -618,10 +640,13 @@ with tab_cluster:
             st.dataframe(cluster_summary, use_container_width=True, hide_index=True)
 
             if meta["silhouette"] is not None:
+                ev_note = (
+                    f" PCA explains {ev.sum():.0%} of variance." if ev is not None
+                    else " UMAP does not expose explained variance."
+                )
                 st.caption(
                     f"Silhouette score: {meta['silhouette']:.3f} "
-                    f"(0 = overlapping, 1 = perfectly separated). "
-                    f"PCA explains {ev.sum():.0%} of variance."
+                    f"(0 = overlapping, 1 = perfectly separated)." + ev_note
                 )
 
 # -- Tab 6: Anomaly Detection ----------------------------------------------------
@@ -750,6 +775,73 @@ with tab_anomaly:
                   help="Laps the multi-feature model flags that IQR considers clean")
     col_s3.metric("ML misses (IQR only)", iqr_only_count,
                   help="Laps IQR flags that the ML model scores as normal")
+
+    st.divider()
+
+    # 2D feature projection coloured by anomaly score
+    st.subheader("2D Feature Projection")
+    st.caption(
+        "Projects the anomaly feature space to 2D. Points coloured by anomaly score: "
+        "dark red = most anomalous. PCA is linear and fast; UMAP preserves local neighbourhood structure."
+    )
+
+    proj_col, _ = st.columns([1, 3])
+    with proj_col:
+        anomaly_proj_method = st.radio(
+            "Projection method",
+            ["PCA", "UMAP"],
+            horizontal=True,
+            key="anomaly_proj",
+            help="UMAP may be slow on large sessions.",
+        )
+
+    _ANOMALY_FEAT_COLS = tuple(
+        c for c in ["class_pace_delta", "stint_age", "is_traffic_lap", "is_in_lap", "is_out_lap"]
+        if c in annotated_laps.columns
+    )
+
+    if len(_ANOMALY_FEAT_COLS) >= 2:
+        proj_coords = get_2d_projection(
+            annotated_laps, _ANOMALY_FEAT_COLS, anomaly_proj_method.lower()
+        )
+        proj_plot = annotated_laps[["car_number", "car_class", "lap_number",
+                                    "lap_time", "anomaly_score", "is_lap_anomaly"]].copy()
+        proj_plot["proj_x"] = proj_coords["x"].values
+        proj_plot["proj_y"] = proj_coords["y"].values
+
+        ev_x = proj_coords["ev_x"].iloc[0]
+        ev_y = proj_coords["ev_y"].iloc[0]
+        x_axis_label = f"PC1 ({ev_x:.0%} var)" if ev_x is not None else "UMAP-1"
+        y_axis_label = f"PC2 ({ev_y:.0%} var)" if ev_y is not None else "UMAP-2"
+
+        fig_proj = px.scatter(
+            proj_plot,
+            x="proj_x", y="proj_y",
+            color="anomaly_score",
+            color_continuous_scale="Reds",
+            symbol="is_lap_anomaly",
+            symbol_map={True: "x", False: "circle"},
+            hover_data={
+                "car_number": True,
+                "car_class": True,
+                "lap_number": True,
+                "lap_time": ":.3f",
+                "anomaly_score": ":.3f",
+                "proj_x": False,
+                "proj_y": False,
+            },
+            labels={
+                "proj_x": x_axis_label,
+                "proj_y": y_axis_label,
+                "anomaly_score": "Anomaly score",
+                "is_lap_anomaly": "Flagged",
+            },
+            title=f"{anomaly_proj_method} of anomaly features — flagged laps marked ×",
+            height=440,
+            opacity=0.65,
+        )
+        fig_proj.update_traces(marker=dict(size=5))
+        st.plotly_chart(fig_proj, use_container_width=True)
 
 # -- Tab 7: Strategy Patterns (Association Rules) ----------------------------
 

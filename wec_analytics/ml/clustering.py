@@ -13,13 +13,13 @@ interpretability — do the clusters make sense to a race strategist?
 import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN, KMeans
-from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
 from wec_analytics.ml.degradation import compare_degradation
 from wec_analytics.ml.features import build_stint_features
+from wec_analytics.ml.reduction import explained_variance_ratio, reduce_to_2d
 
 
 CLUSTER_FEATURES = [
@@ -154,6 +154,7 @@ def cluster_strategies(
     session: pd.DataFrame,
     n_clusters: int | str = "auto",
     method: str = "kmeans",
+    projection: str = "pca",
 ) -> tuple[pd.DataFrame, dict]:
     """Cluster cars in a session into strategy archetypes.
 
@@ -167,6 +168,9 @@ def cluster_strategies(
     method : 'kmeans' or 'dbscan'
         Clustering algorithm. DBSCAN auto-tunes epsilon from k-NN distances
         and labels outlier cars as cluster -1.
+    projection : 'pca' or 'umap'
+        Dimensionality reduction method used for the 2D scatter visualisation.
+        Does not affect cluster labels -- only the returned coordinates.
 
     Returns
     -------
@@ -181,7 +185,8 @@ def cluster_strategies(
             - k_scores (dict or None, KMeans auto mode only: k -> silhouette)
             - k_inertias (dict or None, KMeans auto mode only: k -> inertia)
             - pca_coords (DataFrame: car_number, PC1, PC2)
-            - pca_explained_variance (np.ndarray)
+            - pca_explained_variance (np.ndarray or None; None when projection='umap')
+            - projection (str): the method used for 2D projection
             - feature_names (list[str])
 
     Raises
@@ -202,15 +207,16 @@ def cluster_strategies(
             f"got {len(features)}."
         )
 
-    X = features[CLUSTER_FEATURES].to_numpy(dtype=float)
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    feature_df = features[CLUSTER_FEATURES].reset_index(drop=True)
+    feature_df = feature_df.fillna(0.0)
 
-    pca = PCA(n_components=2, random_state=42)
-    pca_coords_arr = pca.fit_transform(X_scaled)
-    pca_coords = pd.DataFrame(
-        pca_coords_arr, columns=["PC1", "PC2"]
-    )
+    # Scale separately for clustering (DBSCAN/KMeans need scaled data)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(feature_df.to_numpy(dtype=float))
+
+    # 2D projection for visualisation (independent of clustering algorithm)
+    proj_coords, proj_transformer = reduce_to_2d(feature_df, method=projection)
+    pca_coords = proj_coords.rename(columns={"x": "PC1", "y": "PC2"})
     pca_coords.insert(0, "car_number", features["car_number"].values)
 
     k_scores = None
@@ -253,7 +259,8 @@ def cluster_strategies(
         "k_scores": k_scores,
         "k_inertias": k_inertias,
         "pca_coords": pca_coords,
-        "pca_explained_variance": pca.explained_variance_ratio_,
+        "pca_explained_variance": explained_variance_ratio(proj_transformer),
+        "projection": projection,
         "feature_names": CLUSTER_FEATURES,
     }
 
