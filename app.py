@@ -788,13 +788,21 @@ with tab_rules:
     if rules.empty:
         st.info("No rules found at these thresholds -- try lowering min support.")
     else:
+        def _shorten(items_str: str) -> str:
+            """Strip class_ prefix and wrap long lists across two lines."""
+            return items_str.replace("class_", "")
+
+        rules = rules.copy()
+        rules["ant_short"] = rules["antecedents_str"].apply(_shorten)
+        rules["con_short"] = rules["consequents_str"].apply(_shorten)
+
         best_rule = rules.iloc[0]
         col_r1, col_r2, col_r3 = st.columns(3)
         col_r1.metric("Total rules", len(rules))
         col_r2.metric("Max lift", f"{rules['lift'].max():.2f}")
         col_r3.metric(
             "Top rule (by lift)",
-            f"{best_rule['antecedents_str']} -> {best_rule['consequents_str']}",
+            f"{best_rule['ant_short']} -> {best_rule['con_short']}",
             help=f"confidence={best_rule['confidence']:.2f}, lift={best_rule['lift']:.2f}",
         )
 
@@ -802,9 +810,7 @@ with tab_rules:
 
         # Top 10 rules bar chart
         top10 = rules.head(10).copy()
-        top10["rule_label"] = (
-            top10["antecedents_str"] + " -> " + top10["consequents_str"]
-        )
+        top10["rule_label"] = top10["ant_short"] + "  ->  " + top10["con_short"]
         fig_rules = px.bar(
             top10.iloc[::-1],  # reverse so highest lift is at top
             x="lift",
@@ -812,25 +818,28 @@ with tab_rules:
             orientation="h",
             color="confidence",
             color_continuous_scale="Blues",
+            color_continuous_midpoint=0.75,
+            range_color=[0.0, 1.0],
             labels={"lift": "Lift", "rule_label": "Rule", "confidence": "Confidence"},
             title="Top 10 rules by lift",
-            height=max(280, 35 * len(top10)),
+            height=max(340, 46 * len(top10)),
         )
         fig_rules.update_layout(
-            yaxis=dict(autorange=True),
-            coloraxis_colorbar=dict(title="Conf"),
+            yaxis=dict(autorange=True, tickfont=dict(size=12)),
+            margin=dict(l=320),
+            coloraxis_colorbar=dict(title="Conf", tickvals=[0, 0.5, 1.0]),
         )
         st.plotly_chart(fig_rules, use_container_width=True)
 
         # Full rules table
-        display_cols = ["antecedents_str", "consequents_str", "support", "confidence", "lift"]
+        display_cols = ["ant_short", "con_short", "support", "confidence", "lift"]
         display = rules.head(30)[display_cols].copy()
         display["support"] = display["support"].round(3)
         display["confidence"] = display["confidence"].round(3)
         display["lift"] = display["lift"].round(3)
         display = display.rename(columns={
-            "antecedents_str": "Antecedents",
-            "consequents_str": "Consequents",
+            "ant_short": "Antecedents",
+            "con_short": "Consequents",
         })
         st.caption(f"Top {min(30, len(rules))} rules sorted by lift:")
         st.dataframe(display, use_container_width=True, hide_index=True)
