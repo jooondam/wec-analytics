@@ -28,6 +28,7 @@ from wec_analytics.ml.anomaly import (
     compare_with_iqr,
     detect_lap_anomalies,
 )
+from wec_analytics.ml.association import mine_strategy_rules
 from wec_analytics.ml.degradation import MIN_STINT_LAPS, compare_degradation, enrich_with_deg_slope, fit_all_stints
 from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 from wec_analytics.ml.pace import predict_pace_session
@@ -109,6 +110,11 @@ def get_iqr_comparison(_laps: pd.DataFrame, method: str, contamination: float) -
     return compare_with_iqr(_laps, method=method, contamination=contamination)
 
 
+@st.cache_data(show_spinner="Mining strategy patterns...")
+def get_strategy_rules(_laps: pd.DataFrame, min_support: float, min_confidence: float) -> pd.DataFrame:
+    return mine_strategy_rules(_laps, min_support=min_support, min_confidence=min_confidence)
+
+
 @st.cache_data(show_spinner="Loading session data...")
 def get_session(race_id: str) -> pd.DataFrame:
     url = SESSION_URLS[race_id]
@@ -188,8 +194,8 @@ car_laps = laps[laps["car_number"] == selected_car].copy()
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster, tab_anomaly = st.tabs(
-    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters", "Anomaly Detection"]
+tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster, tab_anomaly, tab_rules = st.tabs(
+    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters", "Anomaly Detection", "Strategy Patterns"]
 )
 
 # ── Tab 1: Race Overview ────────────────────────────────────────────────────
@@ -744,3 +750,87 @@ with tab_anomaly:
                   help="Laps the multi-feature model flags that IQR considers clean")
     col_s3.metric("ML misses (IQR only)", iqr_only_count,
                   help="Laps IQR flags that the ML model scores as normal")
+
+# -- Tab 7: Strategy Patterns (Association Rules) ----------------------------
+
+with tab_rules:
+    st.subheader(f"{RACE_LABELS[selected_race_id]}: Strategy Patterns")
+    st.caption(
+        "Association rules mined from 15-minute race windows. "
+        "Each window is a transaction listing events: pit stop, SC period, traffic, driver change. "
+        "Rules like {sc_period} -> {next_pit} reveal strategy responses with confidence and lift."
+    )
+
+    col_sup, col_conf = st.columns(2)
+    with col_sup:
+        min_support = st.slider(
+            "Min support",
+            min_value=0.01,
+            max_value=0.30,
+            value=0.05,
+            step=0.01,
+            format="%.2f",
+            help="Fraction of windows the itemset must appear in.",
+        )
+    with col_conf:
+        min_confidence = st.slider(
+            "Min confidence",
+            min_value=0.30,
+            max_value=0.95,
+            value=0.60,
+            step=0.05,
+            format="%.2f",
+            help="P(consequent | antecedent). Higher = more reliable rule.",
+        )
+
+    rules = get_strategy_rules(laps, min_support, min_confidence)
+
+    if rules.empty:
+        st.info("No rules found at these thresholds -- try lowering min support.")
+    else:
+        best_rule = rules.iloc[0]
+        col_r1, col_r2, col_r3 = st.columns(3)
+        col_r1.metric("Total rules", len(rules))
+        col_r2.metric("Max lift", f"{rules['lift'].max():.2f}")
+        col_r3.metric(
+            "Top rule (by lift)",
+            f"{best_rule['antecedents_str']} -> {best_rule['consequents_str']}",
+            help=f"confidence={best_rule['confidence']:.2f}, lift={best_rule['lift']:.2f}",
+        )
+
+        st.divider()
+
+        # Top 10 rules bar chart
+        top10 = rules.head(10).copy()
+        top10["rule_label"] = (
+            top10["antecedents_str"] + " -> " + top10["consequents_str"]
+        )
+        fig_rules = px.bar(
+            top10.iloc[::-1],  # reverse so highest lift is at top
+            x="lift",
+            y="rule_label",
+            orientation="h",
+            color="confidence",
+            color_continuous_scale="Blues",
+            labels={"lift": "Lift", "rule_label": "Rule", "confidence": "Confidence"},
+            title="Top 10 rules by lift",
+            height=max(280, 35 * len(top10)),
+        )
+        fig_rules.update_layout(
+            yaxis=dict(autorange=True),
+            coloraxis_colorbar=dict(title="Conf"),
+        )
+        st.plotly_chart(fig_rules, use_container_width=True)
+
+        # Full rules table
+        display_cols = ["antecedents_str", "consequents_str", "support", "confidence", "lift"]
+        display = rules.head(30)[display_cols].copy()
+        display["support"] = display["support"].round(3)
+        display["confidence"] = display["confidence"].round(3)
+        display["lift"] = display["lift"].round(3)
+        display = display.rename(columns={
+            "antecedents_str": "Antecedents",
+            "consequents_str": "Consequents",
+        })
+        st.caption(f"Top {min(30, len(rules))} rules sorted by lift:")
+        st.dataframe(display, use_container_width=True, hide_index=True)
