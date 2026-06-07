@@ -16,6 +16,9 @@ import pandas as pd
 import numpy as np
 
 
+LAP_CLEAN_FLAGS = ["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]
+
+
 def build_lap_features(laps: pd.DataFrame, rolling_window: int = 5,) -> pd.DataFrame:
     """Build a per-lap feature matrix from a cleaned session DataFrame.
 

@@ -14,9 +14,10 @@ conditions or a very short warm-up window captured in the data.
 import numpy as np
 import pandas as pd
 
+from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 
 MIN_STINT_LAPS = 5
-CLEAN_LAP_FLAGS = ["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]
+CLEAN_LAP_FLAGS = LAP_CLEAN_FLAGS
 
 
 def fit_degradation_curve(stint: pd.DataFrame) -> dict:
@@ -99,7 +100,7 @@ def fit_degradation_curve(stint: pd.DataFrame) -> dict:
     }
 
 
-def _fit_all_stints(session: pd.DataFrame) -> pd.DataFrame:
+def fit_all_stints(session: pd.DataFrame) -> pd.DataFrame:
     """Apply fit_degradation_curve to every qualifying stint in a session.
 
     Parameters
@@ -135,6 +136,38 @@ def _fit_all_stints(session: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def enrich_with_deg_slope(laps: pd.DataFrame) -> pd.DataFrame:
+    """Add a per-stint ``deg_slope`` column to a lap-level DataFrame.
+
+    Computes the degradation slope for each (car_number, stint_id) via
+    fit_all_stints and merges it back onto every lap in that stint.
+    Stints with fewer than MIN_STINT_LAPS clean laps receive ``deg_slope = 0.0``.
+
+    Parameters
+    ----------
+    laps : pd.DataFrame
+        Lap-level DataFrame from build_lap_features. Must contain
+        ``car_number`` and ``stint_id`` columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of ``laps`` with a ``deg_slope`` column appended.
+        All existing columns are preserved.
+    """
+    stints = fit_all_stints(laps)
+    out = laps.copy()
+
+    if stints.empty:
+        out["deg_slope"] = 0.0
+        return out
+
+    slope_map = stints[["car_number", "stint_id", "deg_slope"]]
+    out = out.merge(slope_map, on=["car_number", "stint_id"], how="left")
+    out["deg_slope"] = out["deg_slope"].fillna(0.0)
+    return out
+
+
 def compare_degradation(session: pd.DataFrame) -> pd.DataFrame:
     """Aggregate per-stint degradation fits into a per-car summary.
 
@@ -153,7 +186,7 @@ def compare_degradation(session: pd.DataFrame) -> pd.DataFrame:
         Sorted ascending by ``deg_rank`` (rank 1 = least degradation).
         Empty DataFrame if no qualifying stints exist.
     """
-    stints = _fit_all_stints(session)
+    stints = fit_all_stints(session)
     if stints.empty:
         return pd.DataFrame()
 

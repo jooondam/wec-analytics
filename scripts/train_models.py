@@ -24,7 +24,8 @@ from wec_analytics.ingestion.alkamelsystems import extract_session_id, fetch_ses
 from wec_analytics.ingestion.models import clean_session
 from wec_analytics.ingestion.sessions import SESSION_MAP
 from wec_analytics.ml.evaluation import print_pace_comparison, run_pace_evaluation
-from wec_analytics.ml.features import build_lap_features
+from wec_analytics.ml.degradation import enrich_with_deg_slope
+from wec_analytics.ml.features import LAP_CLEAN_FLAGS, build_lap_features
 from wec_analytics.ml.pace import train_pace_model
 from wec_analytics.ml.persistence import make_versioned_path, save_model
 from wec_analytics.ml.pit_window import train_pit_model
@@ -51,7 +52,7 @@ PIT_FEATURE_COLUMNS = ["stint_age", "rolling_pace", "lap_number", "car_class"]
 PIT_NUMERIC_FEATURES = ["stint_age", "rolling_pace", "lap_number"]
 PIT_CATEGORICAL_FEATURES = ["car_class"]
 
-DIRTY_FLAGS = ["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]
+DIRTY_FLAGS = LAP_CLEAN_FLAGS
 
 
 def _load_session(url: str) -> pd.DataFrame:
@@ -94,6 +95,9 @@ def main() -> None:
     removed = len(all_laps) - len(clean_laps)
     print(f"Clean laps: {len(clean_laps):,}  (removed {removed:,} dirty/NaN rows)")
 
+    clean_laps = enrich_with_deg_slope(clean_laps)
+    print(f"Degradation slope enriched: {(clean_laps['deg_slope'] != 0.0).sum():,} laps with non-zero slope")
+
     pace_pipeline = train_pace_model(clean_laps)
 
     # run_pace_evaluation clones the pipeline internally so passing the
@@ -108,7 +112,7 @@ def main() -> None:
         metadata={
             "model_type": "pace_regression",
             "estimator": "LinearRegression",
-            "features": ["stint_age", "rolling_pace", "lap_number", "car_class"],
+            "features": ["stint_age", "rolling_pace", "lap_number", "car_class", "deg_slope"],
             "training_races": sorted(all_laps["race_id"].unique().tolist()),
             "n_clean_laps": int(len(clean_laps)),
             "cv_rmse_mean": eval_results["model"]["rmse_mean"],

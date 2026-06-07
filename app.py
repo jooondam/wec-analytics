@@ -22,7 +22,8 @@ from wec_analytics.ingestion.models import clean_session
 from wec_analytics.ingestion.sessions import SESSION_MAP
 from wec_analytics.ml.features import build_lap_features
 from wec_analytics.ml.clustering import MIN_CARS_TO_CLUSTER, cluster_strategies
-from wec_analytics.ml.degradation import MIN_STINT_LAPS, _fit_all_stints, compare_degradation
+from wec_analytics.ml.degradation import MIN_STINT_LAPS, compare_degradation, enrich_with_deg_slope, fit_all_stints
+from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 from wec_analytics.ml.pace import predict_pace_session
 from wec_analytics.ml.persistence import load_model
 from wec_analytics.ml.pit_window import predict_pit_curve
@@ -102,7 +103,7 @@ def get_session(race_id: str) -> pd.DataFrame:
     with_traffic = detect_traffic_lap(with_outliers)
     featured = build_lap_features(with_traffic)
     featured["race_id"] = meta.race_id
-    return featured
+    return enrich_with_deg_slope(featured)
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +195,7 @@ with tab_overview:
 
     # Lap time scatter -- one point per clean lap, coloured by class
     clean = laps_filtered[
-        ~laps_filtered[["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]].any(axis=1)
+        ~laps_filtered[LAP_CLEAN_FLAGS].any(axis=1)
     ]
 
     fig_scatter = px.scatter(
@@ -215,7 +216,7 @@ with tab_overview:
     st.subheader(f"Car #{selected_car}: stint degradation")
 
     car_clean = car_laps[
-        ~car_laps[["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]].any(axis=1)
+        ~car_laps[LAP_CLEAN_FLAGS].any(axis=1)
     ].copy()
 
     if car_clean.empty:
@@ -413,13 +414,13 @@ with tab_deg:
         st.info("No stints with enough clean laps to fit a degradation curve.")
     else:
         # Per-car selected car curves
-        car_stints = _fit_all_stints(car_laps)
+        car_stints = fit_all_stints(car_laps)
 
         if car_stints.empty:
             st.info(f"Car #{selected_car} has no stints with {MIN_STINT_LAPS}+ clean laps.")
         else:
             clean_car = car_laps[
-                ~car_laps[["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]].any(axis=1)
+                ~car_laps[LAP_CLEAN_FLAGS].any(axis=1)
             ].copy()
 
             fig_curves = go.Figure()

@@ -13,8 +13,9 @@ from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 
-DIRTY_FLAG_COLS = ["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]
+DIRTY_FLAG_COLS = LAP_CLEAN_FLAGS
 
 
 def prepare_pace_features(laps: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
@@ -23,13 +24,14 @@ def prepare_pace_features(laps: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     Parameters
     ----------
     laps : pd.DataFrame
-        Output of build_lap_features. Must contain columns:
-        stint_age, rolling_pace, lap_number, car_class, lap_time.
+        Output of build_lap_features enriched with enrich_with_deg_slope.
+        Must contain columns:
+        stint_age, rolling_pace, lap_number, car_class, deg_slope, lap_time.
 
     Returns
     -------
     tuple[pd.DataFrame, pd.Series]
-        X : DataFrame with columns [stint_age, rolling_pace, lap_number, car_class]
+        X : DataFrame with columns [stint_age, rolling_pace, lap_number, car_class, deg_slope]
         y : Series of lap_time
 
     Notes
@@ -39,12 +41,12 @@ def prepare_pace_features(laps: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     Categorical encoding of car_class should be handled by an sklearn pipeline
     (e.g., ColumnTransformer with OneHotEncoder) outside this function.
     """
-    required = ["stint_age", "rolling_pace", "lap_number", "car_class", "lap_time"]
+    required = ["stint_age", "rolling_pace", "lap_number", "car_class", "deg_slope", "lap_time"]
     missing = [col for col in required if col not in laps.columns]
     if missing:
-        raise KeyError(f"Missing required columns: {missing}. Ensure input is from build_lap_features.")
+        raise KeyError(f"Missing required columns: {missing}. Ensure input is from build_lap_features and enrich_with_deg_slope.")
 
-    X = laps[["stint_age", "rolling_pace", "lap_number", "car_class"]].copy()
+    X = laps[["stint_age", "rolling_pace", "lap_number", "car_class", "deg_slope"]].copy()
     y = laps["lap_time"].copy()
 
     return X, y
