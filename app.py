@@ -44,6 +44,7 @@ SESSION_URLS = {
     "SHANGHAI_2018_RACE":   "https://fiawec.alkamelsystems.com/Results/08_2018-2019/05_SHANGHAI%20INTERNATIONAL%20CIRCUIT/256_FIA%20WEC/201811181100_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
     "SILVERSTONE_2018_RACE":"https://fiawec.alkamelsystems.com/Results/08_2018-2019/03_SILVERSTONE/239_FIA%20WEC/201808191200_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
     "SEBRING_2019_RACE":    "https://fiawec.alkamelsystems.com/Results/08_2018-2019/06_SEBRING/260_FIA%20WEC/201903151600_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
+    "LE_MANS_2019_RACE":   "https://fiawec.alkamelsystems.com/Results/08_2018-2019/08_LE%20MANS/276_FIA%20WEC/201906151500_Race/24_Hour%2024/23_Analysis_Race_Hour%2024.CSV",
 }
 
 RACE_LABELS = {
@@ -52,6 +53,7 @@ RACE_LABELS = {
     "SHANGHAI_2018_RACE":   "Shanghai 2018",
     "SILVERSTONE_2018_RACE":"Silverstone 2018",
     "SEBRING_2019_RACE":    "Sebring 2019 (8h)",
+    "LE_MANS_2019_RACE":   "Le Mans 2019 (24h)",
 }
 
 PIT_FEATURE_COLUMNS = ["stint_age", "rolling_pace", "lap_number", "car_class"]

@@ -44,4 +44,10 @@ SESSION_MAP = {
         year=2019,
         duration_hours=8,
     ),
+    "201906151500_Race": SessionMeta(
+        race_id="LE_MANS_2019_RACE",
+        track="Circuit de la Sarthe",
+        year=2019,
+        duration_hours=24,
+    ),
 }

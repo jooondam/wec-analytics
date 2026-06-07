@@ -42,6 +42,8 @@ TRAINING_URLS = [
     "https://fiawec.alkamelsystems.com/Results/08_2018-2019/03_SILVERSTONE/239_FIA%20WEC/201808191200_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
     # Sebring 2019 -- Round 6 (8-hour race)
     "https://fiawec.alkamelsystems.com/Results/08_2018-2019/06_SEBRING/260_FIA%20WEC/201903151600_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
+    # Le Mans 2019 -- Round 8, 24 Hours of Le Mans
+    "https://fiawec.alkamelsystems.com/Results/08_2018-2019/08_LE%20MANS/276_FIA%20WEC/201906151500_Race/24_Hour%2024/23_Analysis_Race_Hour%2024.CSV",
 ]
 
 # Pit classifier features -- all safe against the FORBIDDEN leakage list.
