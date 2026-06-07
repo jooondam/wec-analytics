@@ -21,6 +21,7 @@ from wec_analytics.ingestion.alkamelsystems import extract_session_id, fetch_ses
 from wec_analytics.ingestion.models import clean_session
 from wec_analytics.ingestion.sessions import SESSION_MAP
 from wec_analytics.ml.features import build_lap_features
+from wec_analytics.ml.clustering import MIN_CARS_TO_CLUSTER, cluster_strategies
 from wec_analytics.ml.degradation import MIN_STINT_LAPS, _fit_all_stints, compare_degradation
 from wec_analytics.ml.pace import predict_pace_session
 from wec_analytics.ml.persistence import load_model
@@ -82,6 +83,11 @@ def get_pit_model():
 @st.cache_data(show_spinner="Computing degradation curves...")
 def get_degradation_summary(_laps: pd.DataFrame) -> pd.DataFrame:
     return compare_degradation(_laps)
+
+
+@st.cache_data(show_spinner="Analysing race strategies...")
+def get_strategy_clusters(_laps: pd.DataFrame, method: str, n_clusters) -> tuple:
+    return cluster_strategies(_laps, n_clusters=n_clusters, method=method)
 
 
 @st.cache_data(show_spinner="Loading session data...")
@@ -163,8 +169,8 @@ car_laps = laps[laps["car_number"] == selected_car].copy()
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_overview, tab_pace, tab_pit, tab_deg = st.tabs(
-    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation"]
+tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster = st.tabs(
+    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters"]
 )
 
 # ── Tab 1: Race Overview ────────────────────────────────────────────────────
@@ -490,3 +496,105 @@ with tab_deg:
             f"Slope from {MIN_STINT_LAPS}+ clean laps per stint. "
             f"Model selected per stint by BIC (linear or quadratic)."
         )
+
+# -- Tab 5: Strategy Clusters ------------------------------------------------
+
+with tab_cluster:
+    st.subheader(f"{RACE_LABELS[selected_race_id]}: Strategy Clusters")
+
+    col_m, col_k = st.columns([1, 2])
+    with col_m:
+        cluster_method = st.radio("Method", ["kmeans", "dbscan"], horizontal=True)
+    with col_k:
+        if cluster_method == "kmeans":
+            auto_k = st.checkbox("Auto-select k (silhouette)", value=True)
+            n_clusters_input = "auto" if auto_k else st.slider("k", 2, 8, 3)
+        else:
+            n_clusters_input = "auto"
+            st.caption("DBSCAN auto-tunes epsilon from k-NN distances. Cluster -1 = outlier cars.")
+
+    n_cars = laps["car_number"].nunique()
+    if n_cars < MIN_CARS_TO_CLUSTER:
+        st.info(f"Need at least {MIN_CARS_TO_CLUSTER} cars to cluster. This session has {n_cars}.")
+    else:
+        try:
+            labels_df, meta = get_strategy_clusters(laps, cluster_method, n_clusters_input)
+        except Exception as exc:
+            st.error(f"Clustering failed: {exc}")
+            labels_df = None
+            meta = None
+
+        if labels_df is not None:
+            pca_plot = meta["pca_coords"].merge(
+                labels_df[["car_number", "car_class", "cluster_label",
+                            "n_stints", "stint_length_mean", "deg_slope_mean"]],
+                on="car_number",
+            )
+            pca_plot["is_selected"] = pca_plot["car_number"] == selected_car
+            pca_plot["marker_size"] = pca_plot["is_selected"].map({True: 16, False: 8})
+            pca_plot["cluster_str"] = pca_plot["cluster_label"].astype(str)
+
+            ev = meta["pca_explained_variance"]
+            fig_pca = px.scatter(
+                pca_plot,
+                x="PC1", y="PC2",
+                color="cluster_str",
+                size="marker_size",
+                hover_data={
+                    "car_number": True,
+                    "car_class": True,
+                    "n_stints": True,
+                    "stint_length_mean": ":.1f",
+                    "deg_slope_mean": ":.3f",
+                    "cluster_str": False,
+                    "marker_size": False,
+                    "is_selected": False,
+                },
+                labels={"cluster_str": "Cluster", "PC1": f"PC1 ({ev[0]:.0%})", "PC2": f"PC2 ({ev[1]:.0%})"},
+                title=f"PCA projection of strategy features ({meta['n_clusters']} clusters, method={cluster_method})",
+                height=460,
+            )
+            fig_pca.update_traces(marker=dict(line=dict(width=1, color="white")))
+            st.plotly_chart(fig_pca, use_container_width=True)
+
+            # silhouette vs k chart for KMeans auto mode
+            if cluster_method == "kmeans" and meta["k_scores"]:
+                k_df = pd.DataFrame([
+                    {"k": k, "Silhouette": s} for k, s in meta["k_scores"].items()
+                ])
+                chosen_k = meta["n_clusters"]
+                fig_sil = px.line(
+                    k_df, x="k", y="Silhouette",
+                    markers=True,
+                    title="Silhouette score by k (higher = better-separated clusters)",
+                    height=260,
+                )
+                fig_sil.add_vline(
+                    x=chosen_k, line_dash="dash", line_color="orange",
+                    annotation_text=f"chosen k={chosen_k}",
+                    annotation_position="top right",
+                )
+                st.plotly_chart(fig_sil, use_container_width=True)
+
+            # Cluster summary table
+            summary_cols = ["cluster_label"] + [c for c in labels_df.columns if c in [
+                "n_stints", "stint_length_mean", "stint_length_std",
+                "class_delta_mean", "consistency_mean", "deg_slope_mean",
+            ]]
+            cluster_summary = (
+                labels_df[summary_cols]
+                .groupby("cluster_label")
+                .mean()
+                .round(3)
+                .reset_index()
+                .rename(columns={"cluster_label": "Cluster"})
+            )
+            st.caption("Mean feature values per cluster (interpret to name each archetype):")
+            st.dataframe(cluster_summary, use_container_width=True, hide_index=True)
+
+            if meta["silhouette"] is not None:
+                st.caption(
+                    f"Silhouette score: {meta['silhouette']:.3f} "
+                    f"(0 = overlapping, 1 = perfectly separated). "
+                    f"PCA explains {ev.sum():.0%} of variance."
+                )
