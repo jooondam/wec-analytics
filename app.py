@@ -22,6 +22,12 @@ from wec_analytics.ingestion.models import clean_session
 from wec_analytics.ingestion.sessions import SESSION_MAP
 from wec_analytics.ml.features import build_lap_features
 from wec_analytics.ml.clustering import MIN_CARS_TO_CLUSTER, cluster_strategies
+from wec_analytics.ml.anomaly import (
+    DEFAULT_CONTAMINATION,
+    VALID_METHODS,
+    compare_with_iqr,
+    detect_lap_anomalies,
+)
 from wec_analytics.ml.degradation import MIN_STINT_LAPS, compare_degradation, enrich_with_deg_slope, fit_all_stints
 from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 from wec_analytics.ml.pace import predict_pace_session
@@ -89,6 +95,16 @@ def get_degradation_summary(_laps: pd.DataFrame) -> pd.DataFrame:
 @st.cache_data(show_spinner="Analysing race strategies...")
 def get_strategy_clusters(_laps: pd.DataFrame, method: str, n_clusters) -> tuple:
     return cluster_strategies(_laps, n_clusters=n_clusters, method=method)
+
+
+@st.cache_data(show_spinner="Running anomaly detection...")
+def get_anomaly_scores(_laps: pd.DataFrame, method: str, contamination: float) -> pd.DataFrame:
+    return detect_lap_anomalies(_laps, method=method, contamination=contamination)
+
+
+@st.cache_data(show_spinner="Comparing anomaly methods...")
+def get_iqr_comparison(_laps: pd.DataFrame, method: str, contamination: float) -> pd.DataFrame:
+    return compare_with_iqr(_laps, method=method, contamination=contamination)
 
 
 @st.cache_data(show_spinner="Loading session data...")
@@ -170,8 +186,8 @@ car_laps = laps[laps["car_number"] == selected_car].copy()
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster = st.tabs(
-    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters"]
+tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster, tab_anomaly = st.tabs(
+    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters", "Anomaly Detection"]
 )
 
 # ── Tab 1: Race Overview ────────────────────────────────────────────────────
@@ -599,3 +615,130 @@ with tab_cluster:
                     f"(0 = overlapping, 1 = perfectly separated). "
                     f"PCA explains {ev.sum():.0%} of variance."
                 )
+
+# -- Tab 6: Anomaly Detection ----------------------------------------------------
+
+with tab_anomaly:
+    st.subheader("Lap Anomaly Detection")
+
+    col_m, col_c = st.columns([1, 1])
+    with col_m:
+        anomaly_method_label = st.radio(
+            "Method",
+            options=["Isolation Forest", "Local Outlier Factor (LOF)"],
+            horizontal=True,
+            key="anomaly_method",
+        )
+    with col_c:
+        anomaly_contamination = st.slider(
+            "Contamination (expected anomaly rate)",
+            min_value=0.01,
+            max_value=0.20,
+            value=float(DEFAULT_CONTAMINATION),
+            step=0.01,
+            format="%.2f",
+            key="anomaly_contamination",
+        )
+
+    anomaly_method = "isolation_forest" if "Isolation" in anomaly_method_label else "lof"
+
+    annotated_laps = get_anomaly_scores(laps, anomaly_method, anomaly_contamination)
+
+    st.divider()
+
+    # Scatter: all laps coloured by anomaly score
+    st.subheader("Anomaly score by lap")
+    fig_anomaly = px.scatter(
+        annotated_laps,
+        x="lap_number",
+        y="lap_time",
+        color="anomaly_score",
+        color_continuous_scale="Reds",
+        hover_data={
+            "car_number": True,
+            "car_class": True,
+            "stint_age": True,
+            "is_lap_anomaly": True,
+            "anomaly_score": ":.3f",
+        },
+        labels={
+            "lap_number": "Lap",
+            "lap_time": "Lap time (s)",
+            "anomaly_score": "Anomaly score",
+        },
+        title=f"All laps coloured by anomaly score ({anomaly_method_label}, contamination={anomaly_contamination:.0%})",
+        height=420,
+        opacity=0.65,
+    )
+    fig_anomaly.update_traces(marker=dict(size=4))
+    st.plotly_chart(fig_anomaly, use_container_width=True)
+
+    # Top anomalous laps table
+    top_n = 20
+    top_anomalous = (
+        annotated_laps[annotated_laps["is_lap_anomaly"]]
+        .sort_values("anomaly_score", ascending=False)
+        .head(top_n)[
+            ["car_number", "car_class", "lap_number", "stint_age",
+             "lap_time", "class_pace_delta", "is_traffic_lap",
+             "is_in_lap", "is_out_lap", "anomaly_score"]
+        ]
+        .copy()
+    )
+    top_anomalous["anomaly_score"] = top_anomalous["anomaly_score"].round(4)
+    top_anomalous["class_pace_delta"] = top_anomalous["class_pace_delta"].round(3)
+    top_anomalous["lap_time"] = top_anomalous["lap_time"].round(3)
+
+    st.caption(f"Top {min(top_n, len(top_anomalous))} highest-scoring flagged laps:")
+    st.dataframe(top_anomalous, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # IQR comparison
+    st.subheader("Agreement with Phase 1 IQR detector")
+    st.caption(
+        "IQR operates on lap time only. Multi-feature ML catches anomalies "
+        "normal in time but unusual in context (ml_only). IQR catches clear "
+        "safety-car laps that blend into the bulk distribution (iqr_only)."
+    )
+
+    comparison = get_iqr_comparison(laps, anomaly_method, anomaly_contamination)
+
+    label_map = {
+        "both_flagged": "Both (IQR + ML)",
+        "iqr_only": "IQR only",
+        "ml_only": "ML only",
+        "neither_flagged": "Neither",
+    }
+    comparison["label"] = comparison["agreement_type"].map(label_map)
+
+    fig_compare = px.bar(
+        comparison,
+        x="label",
+        y="n_laps",
+        color="label",
+        color_discrete_map={
+            "Both (IQR + ML)": "#e74c3c",
+            "IQR only": "#e67e22",
+            "ML only": "#9b59b6",
+            "Neither": "#2ecc71",
+        },
+        text="pct_laps",
+        labels={"label": "Agreement type", "n_laps": "Number of laps"},
+        title="IQR vs ML anomaly flag agreement",
+        height=340,
+    )
+    fig_compare.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+    fig_compare.update_layout(showlegend=False)
+    st.plotly_chart(fig_compare, use_container_width=True)
+
+    ml_only_count = int(comparison.loc[comparison["agreement_type"] == "ml_only", "n_laps"].iloc[0])
+    iqr_only_count = int(comparison.loc[comparison["agreement_type"] == "iqr_only", "n_laps"].iloc[0])
+    both_count = int(comparison.loc[comparison["agreement_type"] == "both_flagged", "n_laps"].iloc[0])
+
+    col_s1, col_s2, col_s3 = st.columns(3)
+    col_s1.metric("Agreement (both)", both_count)
+    col_s2.metric("IQR misses (ML only)", ml_only_count,
+                  help="Laps the multi-feature model flags that IQR considers clean")
+    col_s3.metric("ML misses (IQR only)", iqr_only_count,
+                  help="Laps IQR flags that the ML model scores as normal")
