@@ -1,23 +1,25 @@
 {
-  "save_timestamp": "2026-06-04T06:09:49.576967+00:00",
+  "save_timestamp": "2026-06-07T16:16:15.377747+00:00",
   "sklearn_version": "1.9.0",
   "model_type": "pace_regression",
   "estimator": "LinearRegression",
   "features": [
     "stint_age",
-    "rolling_pace",
     "lap_number",
-    "car_class"
+    "car_class",
+    "deg_slope"
   ],
+  "target": "lap_time_minus_rolling_pace",
   "training_races": [
     "FUJI_2018_RACE",
+    "LE_MANS_2019_RACE",
     "SEBRING_2019_RACE",
     "SHANGHAI_2018_RACE",
     "SILVERSTONE_2018_RACE",
     "SPA_2019_RACE"
   ],
-  "n_clean_laps": 20843,
-  "cv_rmse_mean": 26.558326125779967,
-  "cv_rmse_std": 12.398281617792078,
-  "baseline_rmse_mean": 19.126431595483716
+  "n_clean_laps": 31437,
+  "cv_rmse_mean": 2.3136330050265705,
+  "cv_rmse_std": 1.1103723128867358,
+  "baseline_rmse_mean": 1.9503719438987412
 }
