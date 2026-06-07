@@ -100,13 +100,13 @@ def test_prepare_returns_x_and_y(enriched_laps):
 
 def test_prepare_feature_columns(enriched_laps):
     X, _ = prepare_pace_features(enriched_laps)
-    assert list(X.columns) == ["stint_age", "rolling_pace", "lap_number", "car_class", "deg_slope"]
+    assert list(X.columns) == ["stint_age", "lap_number", "car_class", "deg_slope"]
 
 
-def test_prepare_y_is_lap_time(enriched_laps):
+def test_prepare_y_is_deviation_from_rolling_pace(enriched_laps):
     _, y = prepare_pace_features(enriched_laps)
-    pd.testing.assert_series_equal(y.reset_index(drop=True),
-                                   enriched_laps["lap_time"].reset_index(drop=True))
+    expected = (enriched_laps["lap_time"] - enriched_laps["rolling_pace"]).reset_index(drop=True)
+    pd.testing.assert_series_equal(y.reset_index(drop=True), expected)
 
 
 def test_prepare_raises_if_deg_slope_missing(clean_laps):

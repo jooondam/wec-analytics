@@ -114,7 +114,8 @@ def main() -> None:
         metadata={
             "model_type": "pace_regression",
             "estimator": "LinearRegression",
-            "features": ["stint_age", "rolling_pace", "lap_number", "car_class", "deg_slope"],
+            "features": ["stint_age", "lap_number", "car_class", "deg_slope"],
+            "target": "lap_time_minus_rolling_pace",
             "training_races": sorted(all_laps["race_id"].unique().tolist()),
             "n_clean_laps": int(len(clean_laps)),
             "cv_rmse_mean": eval_results["model"]["rmse_mean"],

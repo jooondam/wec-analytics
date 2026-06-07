@@ -1,10 +1,13 @@
 """
 Pace regression model for wec_analytics ML layer.
 
-Predicts expected lap time for a car given its current stint context.
-The residual between predicted and actual pace is the quantity of
-interest — underperforming the model means slower than expected,
-overperforming means faster.
+Predicts the deviation of each lap from the car's recent rolling pace,
+then adds rolling_pace back to produce an absolute predicted lap time.
+
+Targeting the deviation (lap_time - rolling_pace) rather than absolute
+lap_time makes the model track-agnostic: a 5s positive deviation at
+Le Mans and a 5s positive deviation at Spa mean the same thing to a
+race engineer, even though the absolute lap times differ by 100s.
 """
 
 import pandas as pd
@@ -26,28 +29,31 @@ def prepare_pace_features(laps: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     laps : pd.DataFrame
         Output of build_lap_features enriched with enrich_with_deg_slope.
         Must contain columns:
-        stint_age, rolling_pace, lap_number, car_class, deg_slope, lap_time.
+        stint_age, lap_number, car_class, deg_slope, rolling_pace, lap_time.
 
     Returns
     -------
     tuple[pd.DataFrame, pd.Series]
-        X : DataFrame with columns [stint_age, rolling_pace, lap_number, car_class, deg_slope]
-        y : Series of lap_time
+        X : DataFrame with columns [stint_age, lap_number, car_class, deg_slope]
+        y : Series of (lap_time - rolling_pace), the deviation from recent pace
 
     Notes
     -----
-    Caller is responsible for filtering to clean racing laps (is_outlier=False,
-    is_in_lap=False, is_out_lap=False, is_traffic_lap=False) before calling.
-    Categorical encoding of car_class should be handled by an sklearn pipeline
-    (e.g., ColumnTransformer with OneHotEncoder) outside this function.
+    The target is lap_time minus rolling_pace so the model learns circuit-agnostic
+    deviations rather than absolute lap times. Callers must add rolling_pace back
+    to the model output to recover an absolute predicted lap time.
+
+    Caller is responsible for filtering to clean racing laps before calling.
+    Categorical encoding of car_class is handled by the sklearn Pipeline in
+    train_pace_model via ColumnTransformer with OneHotEncoder.
     """
-    required = ["stint_age", "rolling_pace", "lap_number", "car_class", "deg_slope", "lap_time"]
+    required = ["stint_age", "lap_number", "car_class", "deg_slope", "rolling_pace", "lap_time"]
     missing = [col for col in required if col not in laps.columns]
     if missing:
         raise KeyError(f"Missing required columns: {missing}. Ensure input is from build_lap_features and enrich_with_deg_slope.")
 
-    X = laps[["stint_age", "rolling_pace", "lap_number", "car_class", "deg_slope"]].copy()
-    y = laps["lap_time"].copy()
+    X = laps[["stint_age", "lap_number", "car_class", "deg_slope"]].copy()
+    y = (laps["lap_time"] - laps["rolling_pace"]).copy()
 
     return X, y
 
@@ -140,10 +146,12 @@ def predict_pace(
 
     # predict only on rows where all features are present; return NaN for the
     # rest (e.g. the first lap of each stint where rolling_pace is undefined)
-    valid = X.notna().all(axis=1)
+    valid = X.notna().all(axis=1) & laps["rolling_pace"].notna()
     result = pd.Series(float("nan"), index=laps.index, name="predicted_pace")
     if valid.any():
-        result.loc[valid] = model.predict(X.loc[valid])
+        # model predicts deviation from rolling_pace; add it back for absolute time
+        deviation = model.predict(X.loc[valid])
+        result.loc[valid] = deviation + laps.loc[valid, "rolling_pace"].to_numpy()
 
     return result
 

@@ -72,11 +72,17 @@ def build_lap_features(laps: pd.DataFrame, rolling_window: int = 5,) -> pd.DataF
     # calculate the stint age using sequential counting within the stint group
     df["stint_age"] = df.groupby(["car_number", "stint_id"]).cumcount() + 1
 
-    # calculate robust rolling pace (median)
-    # closed='left' ensures the rolling window strictly uses previous laps,
-    # preventing target leakage for downstream predictive models
+    # calculate robust rolling pace (median of previous clean laps only)
+    # closed='left' prevents target leakage: the window never includes the current lap.
+    # we mask dirty laps (outliers, pit laps, traffic) to NaN before rolling so that
+    # safety-car periods don't contaminate the rolling baseline for subsequent clean laps.
+    # dirty-lap rows still receive a rolling_pace value (forward-filled from last clean window)
+    # so they are not lost, but their rolling_pace reflects only clean-lap history.
+    flag_cols = [c for c in ["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"] if c in df.columns]
+    clean_lap_time = df["lap_time"].where(~df[flag_cols].any(axis=1)) if flag_cols else df["lap_time"]
+
     df["rolling_pace"] = (
-        df.groupby(["car_number", "stint_id"])["lap_time"]
+        clean_lap_time.groupby([df["car_number"], df["stint_id"]])
         .transform(lambda x: x.rolling(window=rolling_window, min_periods=1, closed='left').median())
     )
 
