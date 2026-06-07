@@ -648,7 +648,7 @@
     /* ── Demo ── */
     .race-grid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 10px;
       margin-bottom: 36px;
     }
@@ -771,7 +771,7 @@
     @media (max-width: 1100px) {
       .hero-body { grid-template-columns: 1fr; }
       .timing-widget { display: none; }
-      .race-grid { grid-template-columns: repeat(3, 1fr); }
+      .race-grid { grid-template-columns: repeat(2, 1fr); }
     }
 
     @media (max-width: 900px) {
@@ -919,24 +919,24 @@
 <div class="stats-strip">
   <div class="stats-inner">
     <div class="stat-cell">
-      <span class="stat-val"><span class="counter" data-target="27323">0</span></span>
+      <span class="stat-val"><span class="counter" data-target="46088">0</span></span>
       <span class="stat-lbl">Laps analysed</span>
       <div class="stat-bar"><div class="stat-bar-fill" data-pct="100"></div></div>
     </div>
     <div class="stat-cell">
-      <span class="stat-val"><span class="counter" data-target="5">0</span></span>
+      <span class="stat-val"><span class="counter" data-target="6">0</span></span>
       <span class="stat-lbl">Race weekends</span>
-      <div class="stat-bar"><div class="stat-bar-fill" data-pct="50"></div></div>
+      <div class="stat-bar"><div class="stat-bar-fill" data-pct="60"></div></div>
     </div>
     <div class="stat-cell">
-      <span class="stat-val"><span class="counter" data-target="170">0</span></span>
+      <span class="stat-val"><span class="counter" data-target="231">0</span></span>
       <span class="stat-lbl">Cars tracked</span>
       <div class="stat-bar"><div class="stat-bar-fill" data-pct="80"></div></div>
     </div>
     <div class="stat-cell">
-      <span class="stat-val"><span class="counter" data-target="4">0</span></span>
-      <span class="stat-lbl">Car classes</span>
-      <div class="stat-bar"><div class="stat-bar-fill" data-pct="40"></div></div>
+      <span class="stat-val"><span class="counter" data-target="107">0</span></span>
+      <span class="stat-lbl">Tests passing</span>
+      <div class="stat-bar"><div class="stat-bar-fill" data-pct="100"></div></div>
     </div>
   </div>
 </div>
@@ -1015,10 +1015,10 @@
           <span class="model-badge badge-reg">Regression</span>
         </div>
         <div class="model-rows">
-          <div class="m-row"><span class="m-key">model</span><span class="m-val">LinearRegression</span></div>
-          <div class="m-row"><span class="m-key">features</span><span class="m-val">stint_age · rolling_pace · car_class</span></div>
-          <div class="m-row"><span class="m-key">target</span><span class="m-val">lap_time (seconds)</span></div>
-          <div class="m-row"><span class="m-key">use case</span><span class="m-val">Expected pace per lap</span></div>
+          <div class="m-row"><span class="m-key">model</span><span class="m-val">HistGradientBoostingRegressor</span></div>
+          <div class="m-row"><span class="m-key">features</span><span class="m-val">stint_age · lap_number · car_class · deg_slope</span></div>
+          <div class="m-row"><span class="m-key">target</span><span class="m-val">deviation from rolling pace</span></div>
+          <div class="m-row"><span class="m-key">cv rmse</span><span class="m-val hl">1.98 s</span></div>
         </div>
       </div>
       <div class="model-card">
@@ -1027,10 +1027,10 @@
           <span class="model-badge badge-cls">Classifier</span>
         </div>
         <div class="model-rows">
-          <div class="m-row"><span class="m-key">model</span><span class="m-val">LogisticRegression</span></div>
-          <div class="m-row"><span class="m-key">features</span><span class="m-val">stint_age · rolling_pace · car_class</span></div>
+          <div class="m-row"><span class="m-key">model</span><span class="m-val">HistGradientBoostingClassifier</span></div>
+          <div class="m-row"><span class="m-key">features</span><span class="m-val">stint_age · rolling_pace · lap_number · car_class</span></div>
           <div class="m-row"><span class="m-key">target</span><span class="m-val">is_in_lap (bool)</span></div>
-          <div class="m-row"><span class="m-key">recall (CV)</span><span class="m-val hl">0.61</span></div>
+          <div class="m-row"><span class="m-key">use case</span><span class="m-val">Pit window probability curve</span></div>
         </div>
       </div>
     </div>
@@ -1086,6 +1086,11 @@
         <p class="race-flag">USA · 2019</p>
         <p class="race-name">Sebring</p>
         <p class="race-year">8 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">France · 2019</p>
+        <p class="race-name">Le Mans</p>
+        <p class="race-year">24 Hours</p>
       </div>
     </div>
 
