@@ -7,15 +7,11 @@ interest — underperforming the model means slower than expected,
 overperforming means faster.
 """
 
-from pathlib import Path
-
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
-
-from wec_analytics.ml.persistence import load_model
 
 
 DIRTY_FLAG_COLS = ["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]
@@ -109,11 +105,11 @@ def train_pace_model(laps: pd.DataFrame) -> Pipeline:
 
 
 def predict_pace(
-    model_path: str | Path,
+    model: Pipeline,
     laps: pd.DataFrame,
 ) -> pd.Series:
     """
-    Predict expected lap times for every row in laps using a saved model.
+    Predict expected lap times for every row in laps.
 
     Returns a Series of predicted lap times aligned to the input DataFrame's
     index, so it can be assigned back as a column: laps["predicted_pace"] = ...
@@ -122,8 +118,9 @@ def predict_pace(
 
     Parameters
     ----------
-    model_path : str or Path
-        Path to a joblib model file saved by save_model.
+    model : Pipeline
+        Fitted sklearn Pipeline returned by train_pace_model or loaded via
+        load_model.
     laps : pd.DataFrame
         Feature-engineered lap DataFrame. Does not need to be filtered to
         clean laps — the caller controls what gets predicted on.
@@ -133,8 +130,6 @@ def predict_pace(
     pd.Series
         Predicted lap times, same index as laps.
     """
-    model, _ = load_model(model_path)
-
     laps = laps.copy()
     if "lap_time" not in laps.columns:
         laps["lap_time"] = float("nan")
@@ -152,7 +147,7 @@ def predict_pace(
 
 
 def predict_pace_session(
-    model_path: str | Path,
+    model: Pipeline,
     laps: pd.DataFrame,
 ) -> pd.DataFrame:
     """
@@ -165,8 +160,9 @@ def predict_pace_session(
 
     Parameters
     ----------
-    model_path : str or Path
-        Path to a joblib model file saved by save_model.
+    model : Pipeline
+        Fitted sklearn Pipeline returned by train_pace_model or loaded via
+        load_model.
     laps : pd.DataFrame
         Full session lap DataFrame from build_lap_features. All laps are
         predicted on; filtering to clean laps is the caller's decision.
@@ -177,7 +173,7 @@ def predict_pace_session(
         Copy of laps with 'predicted_pace' and 'pace_residual' columns added.
     """
     result = laps.copy()
-    result["predicted_pace"] = predict_pace(model_path, laps)
+    result["predicted_pace"] = predict_pace(model, laps)
 
     # residual = actual - predicted:
     # positive → slower than model expected (bad)

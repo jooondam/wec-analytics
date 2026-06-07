@@ -9,6 +9,7 @@ Three views:
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -20,6 +21,7 @@ from wec_analytics.ingestion.alkamelsystems import extract_session_id, fetch_ses
 from wec_analytics.ingestion.models import clean_session
 from wec_analytics.ingestion.sessions import SESSION_MAP
 from wec_analytics.ml.features import build_lap_features
+from wec_analytics.ml.degradation import MIN_STINT_LAPS, _fit_all_stints, compare_degradation
 from wec_analytics.ml.pace import predict_pace_session
 from wec_analytics.ml.persistence import load_model
 from wec_analytics.ml.pit_window import predict_pit_curve
@@ -75,6 +77,11 @@ def get_pit_model():
         return None, None
     model, meta = load_model(path)
     return model, meta
+
+
+@st.cache_data(show_spinner="Computing degradation curves...")
+def get_degradation_summary(_laps: pd.DataFrame) -> pd.DataFrame:
+    return compare_degradation(_laps)
 
 
 @st.cache_data(show_spinner="Loading session data...")
@@ -156,8 +163,8 @@ car_laps = laps[laps["car_number"] == selected_car].copy()
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_overview, tab_pace, tab_pit = st.tabs(
-    ["Race Overview", "Pace Residuals", "Pit Probability"]
+tab_overview, tab_pace, tab_pit, tab_deg = st.tabs(
+    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation"]
 )
 
 # ── Tab 1: Race Overview ────────────────────────────────────────────────────
@@ -232,10 +239,7 @@ with tab_pace:
     if pace_model is None:
         st.error("Train a pace model first: `python scripts/train_models.py`")
     else:
-        annotated = predict_pace_session(
-            _find_latest("*_pace_linear.joblib"),
-            car_laps,
-        )
+        annotated = predict_pace_session(pace_model, car_laps)
 
         valid = annotated.dropna(subset=["predicted_pace", "pace_residual"])
 
@@ -321,64 +325,168 @@ with tab_pit:
                 help="Horizontal line showing where the model would call a pit stop.",
             )
 
-            proba = predict_pit_curve(pit_model, pit_laps, PIT_FEATURE_COLUMNS)
-            pit_laps = pit_laps.copy()
-            pit_laps["pit_probability"] = proba.values
+            try:
+                proba = predict_pit_curve(pit_model, pit_laps, PIT_FEATURE_COLUMNS)
+            except Exception as exc:
+                st.error(
+                    f"Pit model is incompatible with the installed sklearn version: {exc}. "
+                    "Re-run `python scripts/train_models.py` to retrain."
+                )
+                proba = None
 
-            actual_pit_laps = pit_laps[pit_laps["is_in_lap"]]["lap_number"].tolist()
+            if proba is not None:
+                pit_laps = pit_laps.copy()
+                pit_laps["pit_probability"] = proba.values
 
-            fig_pit = go.Figure()
+                actual_pit_laps = pit_laps[pit_laps["is_in_lap"]]["lap_number"].tolist()
 
-            # Probability curve
-            fig_pit.add_trace(go.Scatter(
-                x=pit_laps["lap_number"],
-                y=pit_laps["pit_probability"],
-                mode="lines",
-                name="Pit probability",
-                line=dict(width=2),
-            ))
+                fig_pit = go.Figure()
 
-            # Threshold line
-            fig_pit.add_hline(
-                y=threshold,
-                line_dash="dash",
-                line_color="orange",
-                annotation_text=f"Threshold {threshold:.2f}",
-                annotation_position="top right",
-            )
+                # Probability curve
+                fig_pit.add_trace(go.Scatter(
+                    x=pit_laps["lap_number"],
+                    y=pit_laps["pit_probability"],
+                    mode="lines",
+                    name="Pit probability",
+                    line=dict(width=2),
+                ))
 
-            # Actual pit laps as vertical lines
-            for lap in actual_pit_laps:
-                fig_pit.add_vline(
-                    x=lap,
-                    line_dash="dot",
-                    line_color="red",
-                    opacity=0.6,
+                # Threshold line
+                fig_pit.add_hline(
+                    y=threshold,
+                    line_dash="dash",
+                    line_color="orange",
+                    annotation_text=f"Threshold {threshold:.2f}",
+                    annotation_position="top right",
                 )
 
-            # Legend entry for actual pits
-            if actual_pit_laps:
-                fig_pit.add_trace(go.Scatter(
-                    x=[actual_pit_laps[0]],
-                    y=[0],
-                    mode="markers",
-                    marker=dict(color="red", size=8, symbol="line-ns", line_width=2),
-                    name="Actual pit",
+                # Actual pit laps as vertical lines
+                for lap in actual_pit_laps:
+                    fig_pit.add_vline(
+                        x=lap,
+                        line_dash="dot",
+                        line_color="red",
+                        opacity=0.6,
+                    )
+
+                # Legend entry for actual pits
+                if actual_pit_laps:
+                    fig_pit.add_trace(go.Scatter(
+                        x=[actual_pit_laps[0]],
+                        y=[0],
+                        mode="markers",
+                        marker=dict(color="red", size=8, symbol="line-ns", line_width=2),
+                        name="Actual pit",
+                        showlegend=True,
+                    ))
+
+                fig_pit.update_layout(
+                    title=f"Car #{selected_car}: pit probability by lap",
+                    xaxis_title="Lap",
+                    yaxis_title="P(pit this lap)",
+                    yaxis=dict(range=[0, 1]),
+                    height=420,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                )
+                st.plotly_chart(fig_pit, use_container_width=True)
+
+                st.caption(
+                    f"Red dotted lines = actual pit stops (laps {actual_pit_laps}). "
+                    f"Orange dashed line = probability threshold. "
+                    f"A good model shows rising probability in the laps before each red line."
+                )
+
+# -- Tab 4: Tyre Degradation -------------------------------------------------
+
+with tab_deg:
+    st.subheader(f"Car #{selected_car}: Tyre Degradation")
+
+    deg_summary = get_degradation_summary(laps)
+
+    if deg_summary.empty:
+        st.info("No stints with enough clean laps to fit a degradation curve.")
+    else:
+        # Per-car selected car curves
+        car_stints = _fit_all_stints(car_laps)
+
+        if car_stints.empty:
+            st.info(f"Car #{selected_car} has no stints with {MIN_STINT_LAPS}+ clean laps.")
+        else:
+            clean_car = car_laps[
+                ~car_laps[["is_outlier", "is_in_lap", "is_out_lap", "is_traffic_lap"]].any(axis=1)
+            ].copy()
+
+            fig_curves = go.Figure()
+
+            for _, row in car_stints.iterrows():
+                stint_laps = clean_car[clean_car["stint_id"] == row["stint_id"]]
+                x_pts = stint_laps["stint_age"].to_numpy(dtype=float)
+                y_pts = stint_laps["lap_time"].to_numpy(dtype=float)
+
+                x_fit = np.linspace(x_pts.min(), x_pts.max(), 60)
+                if row["best_model"] == "linear":
+                    y_fit = row["linear_slope"] * x_fit + row["linear_intercept"]
+                    slope_label = f"{row['linear_slope']:+.3f} s/lap"
+                else:
+                    y_fit = row["quadratic_a"] * x_fit ** 2 + row["quadratic_b"] * x_fit + row["quadratic_c"]
+                    slope_label = f"quad b={row['quadratic_b']:+.3f}"
+
+                colour = px.colors.qualitative.Plotly[int(row["stint_id"]) % 10]
+
+                fig_curves.add_trace(go.Scatter(
+                    x=x_pts, y=y_pts, mode="markers",
+                    marker=dict(size=6, color=colour, opacity=0.6),
+                    name=f"Stint {int(row['stint_id'])}",
+                    legendgroup=f"stint_{int(row['stint_id'])}",
+                    showlegend=True,
+                ))
+                fig_curves.add_trace(go.Scatter(
+                    x=x_fit, y=y_fit, mode="lines",
+                    line=dict(width=2, color=colour),
+                    name=f"Stint {int(row['stint_id'])}: {slope_label}",
+                    legendgroup=f"stint_{int(row['stint_id'])}",
                     showlegend=True,
                 ))
 
-            fig_pit.update_layout(
-                title=f"Car #{selected_car}: pit probability by lap",
-                xaxis_title="Lap",
-                yaxis_title="P(pit this lap)",
-                yaxis=dict(range=[0, 1]),
+            fig_curves.update_layout(
+                title=f"Car #{selected_car}: lap time vs stint position with fitted curves",
+                xaxis_title="Lap in stint",
+                yaxis_title="Lap time (s)",
                 height=420,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02),
             )
-            st.plotly_chart(fig_pit, use_container_width=True)
+            st.plotly_chart(fig_curves, use_container_width=True)
 
-            st.caption(
-                f"Red dotted lines = actual pit stops (laps {actual_pit_laps}). "
-                f"Orange dashed line = probability threshold. "
-                f"A good model shows rising probability in the laps before each red line."
-            )
+        # Session degradation ranking
+        st.subheader(f"{RACE_LABELS[selected_race_id]}: Degradation ranking")
+
+        CLASS_COLOURS = {"Hypercar": "#1f77b4", "LMP2": "#ff7f0e", "LMGT3": "#2ca02c"}
+        bar_colours = [
+            "#e74c3c" if row["car_number"] == selected_car
+            else CLASS_COLOURS.get(row["car_class"], "#aec7e8")
+            for _, row in deg_summary.iterrows()
+        ]
+
+        fig_rank = go.Figure(go.Bar(
+            x=deg_summary["deg_slope_mean"],
+            y=deg_summary["car_number"].astype(str),
+            orientation="h",
+            marker_color=bar_colours,
+            text=deg_summary["deg_slope_mean"].apply(lambda v: f"{v:+.3f} s/lap"),
+            textposition="outside",
+        ))
+        fig_rank.update_layout(
+            title="Mean degradation slope per car (lower = less tyre wear)",
+            xaxis_title="Degradation slope (s/lap)",
+            yaxis_title="Car",
+            height=max(300, 30 * len(deg_summary)),
+            yaxis=dict(autorange="reversed"),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_rank, use_container_width=True)
+
+        st.caption(
+            f"Red bar = selected car #{selected_car}. "
+            f"Slope from {MIN_STINT_LAPS}+ clean laps per stint. "
+            f"Model selected per stint by BIC (linear or quadratic)."
+        )
