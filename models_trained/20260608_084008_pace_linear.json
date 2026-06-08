@@ -1,0 +1,33 @@
+{
+  "save_timestamp": "2026-06-08T08:40:08.979588+00:00",
+  "sklearn_version": "1.9.0",
+  "model_type": "pace_regression",
+  "estimator": "HistGradientBoostingRegressor",
+  "features": [
+    "stint_age",
+    "lap_number",
+    "car_class",
+    "deg_slope"
+  ],
+  "target": "lap_time_minus_rolling_pace",
+  "training_races": [
+    "BAHRAIN_2019_RACE",
+    "BAHRAIN_2020_RACE",
+    "COTA_2020_RACE",
+    "FUJI_2018_RACE",
+    "FUJI_2019_RACE",
+    "LE_MANS_2019_RACE",
+    "LE_MANS_2020_RACE",
+    "SEBRING_2019_RACE",
+    "SHANGHAI_2018_RACE",
+    "SHANGHAI_2019_RACE",
+    "SILVERSTONE_2018_RACE",
+    "SILVERSTONE_2019_RACE",
+    "SPA_2019_RACE",
+    "SPA_2020_RACE"
+  ],
+  "n_clean_laps": 69980,
+  "cv_rmse_mean": 1.513278505326163,
+  "cv_rmse_std": 0.8544822350519106,
+  "baseline_rmse_mean": 1.5294802224981887
+}

@@ -34,7 +34,7 @@ from wec_analytics.ml.degradation import MIN_STINT_LAPS, compare_degradation, en
 from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 from wec_analytics.ml.pace import predict_pace_session
 from wec_analytics.ml.persistence import load_model
-from wec_analytics.ml.pit_window import predict_pit_curve
+from wec_analytics.ml.pit_window import predict_pit_curve, predict_pit_curve_per_class
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -79,6 +79,7 @@ RACE_LABELS = {
 }
 
 PIT_FEATURE_COLUMNS = ["stint_age", "norm_stint_age", "pace_trend", "rolling_pace", "lap_number", "car_class"]
+PIT_FEATURE_COLUMNS_PER_CLASS = ["stint_age", "norm_stint_age", "pace_trend", "rolling_pace", "lap_number"]
 
 MODELS_DIR = Path("models_trained")
 
@@ -109,6 +110,15 @@ def get_pit_model():
         return None, None
     model, meta = load_model(path)
     return model, meta
+
+
+@st.cache_resource
+def get_pit_model_per_class():
+    path = _find_latest("*_pit_per_class.joblib")
+    if path is None:
+        return None, None
+    models_dict, meta = load_model(path)
+    return models_dict, meta
 
 
 @st.cache_data(show_spinner="Computing degradation curves...")
@@ -203,16 +213,20 @@ with st.sidebar:
     st.divider()
     pace_model, pace_meta = get_pace_model()
     pit_model, pit_meta = get_pit_model()
+    pit_models_per_class, pit_per_class_meta = get_pit_model_per_class()
 
     if pace_model is None:
         st.warning("No pace model found. Run `python scripts/train_models.py` first.")
     else:
         st.success("Pace model loaded")
 
-    if pit_model is None:
-        st.warning("No pit model found. Run `python scripts/train_models.py` first.")
-    else:
+    if pit_models_per_class is not None:
+        classes_str = ", ".join(pit_per_class_meta.get("classes", []))
+        st.success(f"Pit models loaded (per class: {classes_str})")
+    elif pit_model is not None:
         st.success("Pit model loaded")
+    else:
+        st.warning("No pit model found. Run `python scripts/train_models.py` first.")
 
 # ---------------------------------------------------------------------------
 # Filtered views
@@ -388,7 +402,12 @@ with tab_pit:
             )
 
             try:
-                proba = predict_pit_curve(pit_model, pit_laps, PIT_FEATURE_COLUMNS)
+                if pit_models_per_class is not None:
+                    proba = predict_pit_curve_per_class(
+                        pit_models_per_class, pit_laps, PIT_FEATURE_COLUMNS_PER_CLASS
+                    )
+                else:
+                    proba = predict_pit_curve(pit_model, pit_laps, PIT_FEATURE_COLUMNS)
             except Exception as exc:
                 st.error(
                     f"Pit model is incompatible with the installed sklearn version: {exc}. "
@@ -524,7 +543,7 @@ with tab_deg:
                     marker=dict(size=6, color=colour, opacity=0.6),
                     name=f"Stint {int(row['stint_id'])}",
                     legendgroup=f"stint_{int(row['stint_id'])}",
-                    showlegend=True,
+                    showlegend=False,
                 ))
                 fig_curves.add_trace(go.Scatter(
                     x=x_fit, y=y_fit, mode="lines",
@@ -538,8 +557,16 @@ with tab_deg:
                 title=f"Car #{selected_car}: lap time vs stint position with fitted curves",
                 xaxis_title="Lap in stint",
                 yaxis_title="Lap time (s)",
-                height=420,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                height=500,
+                legend=dict(
+                    orientation="v",
+                    x=1.02,
+                    xanchor="left",
+                    y=1.0,
+                    yanchor="top",
+                    font=dict(size=11),
+                ),
+                margin=dict(r=160),
             )
             st.plotly_chart(fig_curves, use_container_width=True)
 

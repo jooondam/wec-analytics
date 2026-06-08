@@ -161,15 +161,24 @@ def train_pit_model(
         # Output column order: [cat cols...] + [num cols...]
         n_cat = len(categorical_features)
         n_num = len(numeric_features)
-        cat_mask = [True] * n_cat + [False] * n_num
 
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_features),
-                ("num", "passthrough", numeric_features),
-            ],
-            remainder="drop",
-        )
+        if n_cat > 0:
+            cat_mask = [True] * n_cat + [False] * n_num
+            preprocessor = ColumnTransformer(
+                transformers=[
+                    ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_features),
+                    ("num", "passthrough", numeric_features),
+                ],
+                remainder="drop",
+            )
+        else:
+            # per-class models: car_class is constant, no categorical encoding needed
+            cat_mask = None
+            preprocessor = ColumnTransformer(
+                transformers=[("num", "passthrough", numeric_features)],
+                remainder="drop",
+            )
+
         estimator = HistGradientBoostingClassifier(
             categorical_features=cat_mask,
             max_iter=300,
@@ -355,3 +364,110 @@ def predict_pit_window(
     # the index of pit_curve matches race_df's index, so map back to lap_number
     first_pit_idx = candidates.index[0]
     return int(race_df.loc[first_pit_idx, 'lap_number'])
+
+
+def train_pit_models_per_class(
+    df: pd.DataFrame,
+    feature_columns: list[str],
+    numeric_features: list[str],
+    estimator_name: str = "hist_gradient_boosting",
+    group_kfold_splits: int = 14,
+    random_state: int = 42,
+) -> dict:
+    """Train one pit model per car class and return a dict of fitted pipelines.
+
+    Each model sees only its own class's laps, so it learns class-specific
+    stint lengths, fuel windows, and degradation patterns without cross-class
+    noise. car_class is excluded from feature_columns since it is constant
+    within each model.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Full lap dataset. Must contain car_class and race_id columns.
+    feature_columns : list[str]
+        Features for each class model. Should NOT include car_class.
+    numeric_features : list[str]
+        Subset of feature_columns to pass through numerically.
+    estimator_name : str
+        Estimator to use. Currently only 'hist_gradient_boosting' is supported.
+    group_kfold_splits : int
+        Max number of CV folds. Capped per class at the number of races
+        that class appears in.
+    random_state : int
+        Random seed.
+
+    Returns
+    -------
+    dict with keys:
+        'models'      : dict mapping car_class str to fitted Pipeline
+        'cv_metrics'  : dict mapping car_class str to CV metrics dict
+        'classes'     : list of car_class strings that were trained
+    """
+    classes = sorted(df["car_class"].dropna().unique())
+    models: dict = {}
+    all_cv_metrics: dict = {}
+
+    for car_class in classes:
+        class_df = df[df["car_class"] == car_class].copy()
+        n_races = class_df["race_id"].nunique()
+        n_pit = int(class_df["is_in_lap"].sum())
+
+        if n_races < 2:
+            print(f"  {car_class}: skipped (only {n_races} race, need >= 2 for CV)")
+            continue
+
+        folds = min(group_kfold_splits, n_races)
+        result = train_pit_model(
+            class_df,
+            feature_columns=feature_columns,
+            numeric_features=numeric_features,
+            categorical_features=[],
+            estimator_name=estimator_name,
+            group_kfold_splits=folds,
+            random_state=random_state,
+        )
+        models[car_class] = result["pipeline"]
+        all_cv_metrics[car_class] = result["cv_metrics"]
+        cv = result["cv_metrics"]
+        print(
+            f"  {car_class}: {len(class_df):,} laps  {n_pit} pit stops  "
+            f"F1={cv['f1']:.3f}  Recall={cv['recall']:.3f}  Precision={cv['precision']:.3f}"
+        )
+
+    return {
+        "models": models,
+        "cv_metrics": all_cv_metrics,
+        "classes": list(classes),
+    }
+
+
+def predict_pit_curve_per_class(
+    models: dict,
+    race_df: pd.DataFrame,
+    feature_columns: list[str],
+) -> pd.Series:
+    """Predict pit probability using the appropriate class-specific model per lap.
+
+    Parameters
+    ----------
+    models : dict
+        Dict mapping car_class str to fitted Pipeline, as returned by
+        train_pit_models_per_class['models'].
+    race_df : pd.DataFrame
+        Lap DataFrame containing car_class and all feature_columns.
+    feature_columns : list[str]
+        Feature columns the per-class models were trained on.
+
+    Returns
+    -------
+    pd.Series
+        Predicted pit probability per lap, aligned to race_df.index.
+        Laps whose car_class has no trained model default to 0.5.
+    """
+    result = pd.Series(0.5, index=race_df.index, name="pit_probability")
+    for car_class, model in models.items():
+        mask = race_df["car_class"] == car_class
+        if mask.any():
+            result.loc[mask] = predict_pit_curve(model, race_df[mask], feature_columns)
+    return result

@@ -28,7 +28,7 @@ from wec_analytics.ml.degradation import enrich_with_deg_slope
 from wec_analytics.ml.features import LAP_CLEAN_FLAGS, build_lap_features, enrich_with_norm_stint_age
 from wec_analytics.ml.pace import train_pace_model
 from wec_analytics.ml.persistence import make_versioned_path, save_model
-from wec_analytics.ml.pit_window import train_pit_model
+from wec_analytics.ml.pit_window import train_pit_model, train_pit_models_per_class
 
 
 TRAINING_URLS = [
@@ -70,6 +70,10 @@ TRAINING_URLS = [
 PIT_FEATURE_COLUMNS = ["stint_age", "norm_stint_age", "pace_trend", "rolling_pace", "lap_number", "car_class"]
 PIT_NUMERIC_FEATURES = ["stint_age", "norm_stint_age", "pace_trend", "rolling_pace", "lap_number"]
 PIT_CATEGORICAL_FEATURES = ["car_class"]
+
+# per-class models: car_class is constant per model so it is dropped as a feature
+PIT_FEATURE_COLUMNS_PER_CLASS = ["stint_age", "norm_stint_age", "pace_trend", "rolling_pace", "lap_number"]
+PIT_NUMERIC_FEATURES_PER_CLASS = PIT_FEATURE_COLUMNS_PER_CLASS
 
 DIRTY_FLAGS = LAP_CLEAN_FLAGS
 
@@ -188,9 +192,41 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------------
+    # Per-class pit models
+    # ------------------------------------------------------------------
+    print("\n--- Pit window classifier (per class) ---")
+
+    per_class_result = train_pit_models_per_class(
+        pit_df,
+        feature_columns=PIT_FEATURE_COLUMNS_PER_CLASS,
+        numeric_features=PIT_NUMERIC_FEATURES_PER_CLASS,
+        estimator_name="hist_gradient_boosting",
+        group_kfold_splits=n_races,
+    )
+
+    per_class_path = make_versioned_path("pit_per_class")
+    save_model(
+        per_class_result["models"],
+        per_class_path,
+        metadata={
+            "model_type": "pit_window_classifier_per_class",
+            "estimator": "HistGradientBoostingClassifier",
+            "feature_columns": PIT_FEATURE_COLUMNS_PER_CLASS,
+            "numeric_features": PIT_NUMERIC_FEATURES_PER_CLASS,
+            "classes": per_class_result["classes"],
+            "training_races": sorted(all_laps["race_id"].unique().tolist()),
+            "cv_metrics_per_class": {
+                cls: {k: round(v, 4) for k, v in m.items()}
+                for cls, m in per_class_result["cv_metrics"].items()
+            },
+        },
+    )
+
+    # ------------------------------------------------------------------
     print("\n=== Training complete ===")
-    print(f"Pace model:  {pace_path}")
-    print(f"Pit model:   {pit_path}")
+    print(f"Pace model:       {pace_path}")
+    print(f"Pit model:        {pit_path}")
+    print(f"Pit (per class):  {per_class_path}")
 
 
 if __name__ == "__main__":
