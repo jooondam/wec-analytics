@@ -1,8 +1,22 @@
 # wec-analytics
 
-Machine learning pipeline for FIA WEC race strategy analysis. Takes raw Al Kamel Systems timing CSVs, builds a clean lap-level feature dataset, and trains models to predict pace, pit windows, and strategy patterns.
+End-to-end ML pipeline for FIA WEC endurance race strategy analysis. Ingests ~70,000 laps of real timing data across 14 races, builds a clean feature dataset, and trains models to predict pit windows lap-by-lap. Includes a 7-tab Streamlit dashboard to explore results visually.
 
 **[Live demo](https://wec-analytics-obljzqgpkghba3w4wb4rmr.streamlit.app)** | **[Portfolio](https://jooondam.github.io/wec-analytics)**
+
+---
+
+## Results
+
+| Model | Metric | Score |
+|---|---|---|
+| Pit classifier (all classes) | Recall | 0.64 |
+| Pit classifier (all classes) | F1 | 0.36 |
+| Pit classifier - LMP1 | F1 | 0.44 |
+| Pit classifier - LMP2 | F1 | 0.45 |
+| Pace regression | CV RMSE | 1.51s |
+
+Pit stop prediction is a class-imbalance problem: pit laps are rare events in a long race. The classifier is tuned for recall, catching ~64% of actual pit laps. Prototype classes (LMP1/LMP2) are more predictable than GTE, likely because their strategy windows are more regular. Evaluated with leave-one-race-out cross-validation.
 
 ---
 
@@ -22,9 +36,9 @@ Machine learning pipeline for FIA WEC race strategy analysis. Takes raw Al Kamel
 
 ## Dataset
 
-- 6 races from the 2018-2019 FIA WEC Super Season
-- 46,088 laps across Spa, Fuji, Shanghai, Silverstone, Sebring, and Le Mans
-- 231 car entries across Hypercar, LMP2, LMGTE Pro, LMGTE Am
+- 14 races across the 2018, 2019, and 2020 FIA WEC seasons
+- ~70,000 laps across Bahrain, COTA, Fuji, Le Mans, Sebring, Shanghai, Silverstone, and Spa
+- Car classes: LMP1, LMP2, LMGTE Pro, LMGTE Am
 
 Data from [Al Kamel Systems](https://www.alkamelsystems.com), the official FIA WEC timing provider.
 
