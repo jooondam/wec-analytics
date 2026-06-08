@@ -431,6 +431,18 @@ with tab_pit:
                         opacity=0.6,
                     )
 
+                # Predicted pit laps (probability > threshold) as green markers
+                predicted_pit_laps = pit_laps[pit_laps["pit_probability"] >= threshold]["lap_number"].tolist()
+                if predicted_pit_laps:
+                    fig_pit.add_trace(go.Scatter(
+                        x=predicted_pit_laps,
+                        y=[threshold] * len(predicted_pit_laps),
+                        mode="markers",
+                        marker=dict(color="green", size=8, symbol="triangle-up"),
+                        name="Predicted pit",
+                        showlegend=True,
+                    ))
+
                 # Legend entry for actual pits
                 if actual_pit_laps:
                     fig_pit.add_trace(go.Scatter(
@@ -452,10 +464,22 @@ with tab_pit:
                 )
                 st.plotly_chart(fig_pit, use_container_width=True)
 
+                # Summary stats for threshold
+                actual_set = set(actual_pit_laps)
+                predicted_set = set(predicted_pit_laps)
+                true_positives = len(actual_set & predicted_set)
+                recall = true_positives / len(actual_set) if actual_set else 0.0
+                precision = true_positives / len(predicted_set) if predicted_set else 0.0
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Predicted pit laps", len(predicted_set))
+                m2.metric("Actual stops caught", f"{true_positives} / {len(actual_set)}", f"Recall {recall:.0%}")
+                m3.metric("Precision", f"{precision:.0%}", help="Of flagged laps, how many were real pit laps")
+
                 st.caption(
-                    f"Red dotted lines = actual pit stops (laps {actual_pit_laps}). "
-                    f"Orange dashed line = probability threshold. "
-                    f"A good model shows rising probability in the laps before each red line."
+                    f"Red dotted lines = actual pit stops. "
+                    f"Green triangles = laps where model exceeds threshold. "
+                    f"Adjust the slider to trade off recall vs false alarms."
                 )
 
 # -- Tab 4: Tyre Degradation -------------------------------------------------
