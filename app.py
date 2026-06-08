@@ -78,7 +78,7 @@ RACE_LABELS = {
     "BAHRAIN_2020_RACE":     "Bahrain 2020 (8h)",
 }
 
-PIT_FEATURE_COLUMNS = ["stint_age", "norm_stint_age", "rolling_pace", "lap_number", "car_class"]
+PIT_FEATURE_COLUMNS = ["stint_age", "norm_stint_age", "pace_trend", "rolling_pace", "lap_number", "car_class"]
 
 MODELS_DIR = Path("models_trained")
 

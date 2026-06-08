@@ -67,8 +67,8 @@ TRAINING_URLS = [
 # rolling_pace uses closed='left' so it contains only prior laps' times.
 # class_pace_delta is excluded because it embeds the current lap's lap_time,
 # which correlates with is_in_lap (in-laps are systematically slower).
-PIT_FEATURE_COLUMNS = ["stint_age", "norm_stint_age", "rolling_pace", "lap_number", "car_class"]
-PIT_NUMERIC_FEATURES = ["stint_age", "norm_stint_age", "rolling_pace", "lap_number"]
+PIT_FEATURE_COLUMNS = ["stint_age", "norm_stint_age", "pace_trend", "rolling_pace", "lap_number", "car_class"]
+PIT_NUMERIC_FEATURES = ["stint_age", "norm_stint_age", "pace_trend", "rolling_pace", "lap_number"]
 PIT_CATEGORICAL_FEATURES = ["car_class"]
 
 DIRTY_FLAGS = LAP_CLEAN_FLAGS

@@ -86,6 +86,16 @@ def build_lap_features(laps: pd.DataFrame, rolling_window: int = 5,) -> pd.DataF
         .transform(lambda x: x.rolling(window=rolling_window, min_periods=1, closed='left').median())
     )
 
+    # pace trend: change in rolling_pace over the last 3 laps within the same stint.
+    # positive = slowing down (tyre degradation accelerating), negative = improving.
+    # rolling_pace already uses closed='left' so this remains leakage-free.
+    # NaN for the first 3 laps of each stint -- HistGBT handles natively.
+    df["pace_trend"] = (
+        df["rolling_pace"]
+        .groupby([df["car_number"], df["stint_id"]])
+        .transform(lambda x: x.diff(3))
+    )
+
     # Step D: Reference Pace & Class Delta Features
     # We mask outlier lap times to NaN so they are ignored by .transform('min').
     # Because the index remains intact, the clean minimum is broadcast back to
