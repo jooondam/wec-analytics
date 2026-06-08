@@ -1,11 +1,12 @@
 {
-  "save_timestamp": "2026-06-08T08:26:58.593178+00:00",
+  "save_timestamp": "2026-06-08T08:30:42.864527+00:00",
   "sklearn_version": "1.9.0",
   "model_type": "pit_window_classifier",
   "estimator": "HistGradientBoostingClassifier",
   "feature_columns": [
     "stint_age",
     "norm_stint_age",
+    "pace_trend",
     "rolling_pace",
     "lap_number",
     "car_class"
@@ -13,6 +14,7 @@
   "numeric_features": [
     "stint_age",
     "norm_stint_age",
+    "pace_trend",
     "rolling_pace",
     "lap_number"
   ],
@@ -35,10 +37,10 @@
     "SPA_2019_RACE",
     "SPA_2020_RACE"
   ],
-  "n_training_laps": 80641,
-  "cv_f1": 0.33084918163635996,
+  "n_training_laps": 63946,
+  "cv_f1": 0.3561583220990128,
   "cv_roc_auc": NaN,
-  "cv_brier": 0.11745559053571117,
-  "cv_precision": 0.23281565978001528,
-  "cv_recall": 0.6323579331980215
+  "cv_brier": 0.12478241976772088,
+  "cv_precision": 0.2548359731998477,
+  "cv_recall": 0.6405836110187467
 }

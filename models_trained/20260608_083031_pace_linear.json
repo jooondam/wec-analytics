@@ -1,5 +1,5 @@
 {
-  "save_timestamp": "2026-06-08T08:26:46.270278+00:00",
+  "save_timestamp": "2026-06-08T08:30:31.561047+00:00",
   "sklearn_version": "1.9.0",
   "model_type": "pace_regression",
   "estimator": "HistGradientBoostingRegressor",
