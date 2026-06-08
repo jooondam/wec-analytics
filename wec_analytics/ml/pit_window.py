@@ -176,6 +176,7 @@ def train_pit_model(
             learning_rate=0.05,
             max_depth=4,
             min_samples_leaf=20,
+            class_weight="balanced",
             random_state=random_state,
         )
 
