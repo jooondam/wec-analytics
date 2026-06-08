@@ -41,21 +41,41 @@ from wec_analytics.ml.pit_window import predict_pit_curve
 # ---------------------------------------------------------------------------
 
 SESSION_URLS = {
-    "SPA_2019_RACE":        "http://fiawec.alkamelsystems.com/Results/08_2018-2019/07_SPA%20FRANCORCHAMPS/267_FIA%20WEC/201905041330_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
-    "FUJI_2018_RACE":       "https://fiawec.alkamelsystems.com/Results/08_2018-2019/04_FUJI%20SPEEDWAY/246_FIA%20WEC/201810141100_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
-    "SHANGHAI_2018_RACE":   "https://fiawec.alkamelsystems.com/Results/08_2018-2019/05_SHANGHAI%20INTERNATIONAL%20CIRCUIT/256_FIA%20WEC/201811181100_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
-    "SILVERSTONE_2018_RACE":"https://fiawec.alkamelsystems.com/Results/08_2018-2019/03_SILVERSTONE/239_FIA%20WEC/201808191200_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
-    "SEBRING_2019_RACE":    "https://fiawec.alkamelsystems.com/Results/08_2018-2019/06_SEBRING/260_FIA%20WEC/201903151600_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
-    "LE_MANS_2019_RACE":   "https://fiawec.alkamelsystems.com/Results/08_2018-2019/08_LE%20MANS/276_FIA%20WEC/201906151500_Race/24_Hour%2024/23_Analysis_Race_Hour%2024.CSV",
+    # 2018-2019 Super Season
+    "SPA_2019_RACE":         "http://fiawec.alkamelsystems.com/Results/08_2018-2019/07_SPA%20FRANCORCHAMPS/267_FIA%20WEC/201905041330_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    "FUJI_2018_RACE":        "https://fiawec.alkamelsystems.com/Results/08_2018-2019/04_FUJI%20SPEEDWAY/246_FIA%20WEC/201810141100_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    "SHANGHAI_2018_RACE":    "https://fiawec.alkamelsystems.com/Results/08_2018-2019/05_SHANGHAI%20INTERNATIONAL%20CIRCUIT/256_FIA%20WEC/201811181100_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    "SILVERSTONE_2018_RACE": "https://fiawec.alkamelsystems.com/Results/08_2018-2019/03_SILVERSTONE/239_FIA%20WEC/201808191200_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    "SEBRING_2019_RACE":     "https://fiawec.alkamelsystems.com/Results/08_2018-2019/06_SEBRING/260_FIA%20WEC/201903151600_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
+    "LE_MANS_2019_RACE":     "https://fiawec.alkamelsystems.com/Results/08_2018-2019/08_LE%20MANS/276_FIA%20WEC/201906151500_Race/24_Hour%2024/23_Analysis_Race_Hour%2024.CSV",
+    # 2019-2020 season
+    "SILVERSTONE_2019_RACE": "https://fiawec.alkamelsystems.com/Results/09_2019-2020/01_SILVERSTONE/285_FIA%20WEC/201909011200_Race/Hour%204/23_Analysis_Race_Hour%204.CSV",
+    "FUJI_2019_RACE":        "https://fiawec.alkamelsystems.com/Results/09_2019-2020/02_FUJI%20SPEEDWAY/294_FIA%20WEC/201910061100_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    "SHANGHAI_2019_RACE":    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/03_SHANGHAI%20INTERNATIONAL%20CIRCUIT/01_FIA%20WEC/201911101200_Race/Hour%204/23_Analysis_Race_Hour%204.CSV",
+    "BAHRAIN_2019_RACE":     "https://fiawec.alkamelsystems.com/Results/09_2019-2020/04_BAHRAIN%20INTERNATIONAL%20CIRCUIT/307_FIA%20WEC/201912141500_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
+    "COTA_2020_RACE":        "https://fiawec.alkamelsystems.com/Results/09_2019-2020/05_CIRCUIT%20OF%20THE%20AMERICAS/311_FIA%20WEC/202002231200_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    "SPA_2020_RACE":         "https://fiawec.alkamelsystems.com/Results/09_2019-2020/06_SPA%20FRANCORCHAMPS/327_FIA%20WEC/202008151330_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    "LE_MANS_2020_RACE":     "https://fiawec.alkamelsystems.com/Results/09_2019-2020/07_LE%20MANS/335_FIA%20WEC/202009191430_Race/Hour%2024/23_Analysis_Race_Hour%2024.CSV",
+    "BAHRAIN_2020_RACE":     "https://fiawec.alkamelsystems.com/Results/09_2019-2020/08_BAHRAIN%20INTERNATIONAL%20CIRCUIT/348_FIA%20WEC/202011141400_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
 }
 
 RACE_LABELS = {
-    "SPA_2019_RACE":        "Spa-Francorchamps 2019",
-    "FUJI_2018_RACE":       "Fuji Speedway 2018",
-    "SHANGHAI_2018_RACE":   "Shanghai 2018",
-    "SILVERSTONE_2018_RACE":"Silverstone 2018",
-    "SEBRING_2019_RACE":    "Sebring 2019 (8h)",
-    "LE_MANS_2019_RACE":   "Le Mans 2019 (24h)",
+    # 2018-2019 Super Season
+    "SPA_2019_RACE":         "Spa 2019 (6h)",
+    "FUJI_2018_RACE":        "Fuji 2018 (6h)",
+    "SHANGHAI_2018_RACE":    "Shanghai 2018 (6h)",
+    "SILVERSTONE_2018_RACE": "Silverstone 2018 (6h)",
+    "SEBRING_2019_RACE":     "Sebring 2019 (8h)",
+    "LE_MANS_2019_RACE":     "Le Mans 2019 (24h)",
+    # 2019-2020 season
+    "SILVERSTONE_2019_RACE": "Silverstone 2019 (4h)",
+    "FUJI_2019_RACE":        "Fuji 2019 (6h)",
+    "SHANGHAI_2019_RACE":    "Shanghai 2019 (4h)",
+    "BAHRAIN_2019_RACE":     "Bahrain 2019 (8h)",
+    "COTA_2020_RACE":        "COTA 2020 (6h)",
+    "SPA_2020_RACE":         "Spa 2020 (6h)",
+    "LE_MANS_2020_RACE":     "Le Mans 2020 (24h)",
+    "BAHRAIN_2020_RACE":     "Bahrain 2020 (8h)",
 }
 
 PIT_FEATURE_COLUMNS = ["stint_age", "rolling_pace", "lap_number", "car_class"]

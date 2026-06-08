@@ -50,4 +50,53 @@ SESSION_MAP = {
         year=2019,
         duration_hours=24,
     ),
+    # 2019-2020 season
+    "201909011200_Race": SessionMeta(
+        race_id="SILVERSTONE_2019_RACE",
+        track="Silverstone",
+        year=2019,
+        duration_hours=4,
+    ),
+    "201910061100_Race": SessionMeta(
+        race_id="FUJI_2019_RACE",
+        track="Fuji Speedway",
+        year=2019,
+        duration_hours=6,
+    ),
+    "201911101200_Race": SessionMeta(
+        race_id="SHANGHAI_2019_RACE",
+        track="Shanghai International Circuit",
+        year=2019,
+        duration_hours=4,
+    ),
+    "201912141500_Race": SessionMeta(
+        race_id="BAHRAIN_2019_RACE",
+        track="Bahrain International Circuit",
+        year=2019,
+        duration_hours=8,
+    ),
+    "202002231200_Race": SessionMeta(
+        race_id="COTA_2020_RACE",
+        track="Circuit of the Americas",
+        year=2020,
+        duration_hours=6,
+    ),
+    "202008151330_Race": SessionMeta(
+        race_id="SPA_2020_RACE",
+        track="Spa-Francorchamps",
+        year=2020,
+        duration_hours=6,
+    ),
+    "202009191430_Race": SessionMeta(
+        race_id="LE_MANS_2020_RACE",
+        track="Circuit de la Sarthe",
+        year=2020,
+        duration_hours=24,
+    ),
+    "202011141400_Race": SessionMeta(
+        race_id="BAHRAIN_2020_RACE",
+        track="Bahrain International Circuit",
+        year=2020,
+        duration_hours=8,
+    ),
 }

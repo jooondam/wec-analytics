@@ -44,6 +44,23 @@ TRAINING_URLS = [
     "https://fiawec.alkamelsystems.com/Results/08_2018-2019/06_SEBRING/260_FIA%20WEC/201903151600_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
     # Le Mans 2019 -- Round 8, 24 Hours of Le Mans
     "https://fiawec.alkamelsystems.com/Results/08_2018-2019/08_LE%20MANS/276_FIA%20WEC/201906151500_Race/24_Hour%2024/23_Analysis_Race_Hour%2024.CSV",
+    # 2019-2020 season
+    # Silverstone 2019 -- Round 1 (4-hour race)
+    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/01_SILVERSTONE/285_FIA%20WEC/201909011200_Race/Hour%204/23_Analysis_Race_Hour%204.CSV",
+    # Fuji Speedway 2019 -- Round 2
+    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/02_FUJI%20SPEEDWAY/294_FIA%20WEC/201910061100_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    # Shanghai 2019 -- Round 3 (4-hour race)
+    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/03_SHANGHAI%20INTERNATIONAL%20CIRCUIT/01_FIA%20WEC/201911101200_Race/Hour%204/23_Analysis_Race_Hour%204.CSV",
+    # Bahrain 2019 -- Round 4 (8-hour race)
+    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/04_BAHRAIN%20INTERNATIONAL%20CIRCUIT/307_FIA%20WEC/201912141500_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
+    # Circuit of the Americas 2020 -- Round 5
+    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/05_CIRCUIT%20OF%20THE%20AMERICAS/311_FIA%20WEC/202002231200_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    # Spa-Francorchamps 2020 -- Round 6
+    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/06_SPA%20FRANCORCHAMPS/327_FIA%20WEC/202008151330_Race/Hour%206/23_Analysis_Race_Hour%206.CSV",
+    # Le Mans 2020 -- Round 7, 24 Hours of Le Mans
+    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/07_LE%20MANS/335_FIA%20WEC/202009191430_Race/Hour%2024/23_Analysis_Race_Hour%2024.CSV",
+    # Bahrain 2020 -- Round 8 season finale (8-hour race)
+    "https://fiawec.alkamelsystems.com/Results/09_2019-2020/08_BAHRAIN%20INTERNATIONAL%20CIRCUIT/348_FIA%20WEC/202011141400_Race/Hour%208/23_Analysis_Race_Hour%208.CSV",
 ]
 
 # Pit classifier features -- all safe against the FORBIDDEN leakage list.
