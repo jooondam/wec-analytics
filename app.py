@@ -92,17 +92,17 @@ def get_pit_model():
 
 
 @st.cache_data(show_spinner="Computing degradation curves...")
-def get_degradation_summary(_laps: pd.DataFrame) -> pd.DataFrame:
+def get_degradation_summary(_laps: pd.DataFrame, race_id: str) -> pd.DataFrame:
     return compare_degradation(_laps)
 
 
 @st.cache_data(show_spinner="Analysing race strategies...")
-def get_strategy_clusters(_laps: pd.DataFrame, method: str, n_clusters, projection: str) -> tuple:
+def get_strategy_clusters(_laps: pd.DataFrame, method: str, n_clusters, projection: str, race_id: str) -> tuple:
     return cluster_strategies(_laps, n_clusters=n_clusters, method=method, projection=projection)
 
 
 @st.cache_data(show_spinner="Projecting features to 2D...")
-def get_2d_projection(_df: pd.DataFrame, feature_cols: tuple, method: str) -> pd.DataFrame:
+def get_2d_projection(_df: pd.DataFrame, feature_cols: tuple, method: str, data_key: str) -> pd.DataFrame:
     feat = _df[list(feature_cols)].fillna(0.0)
     coords, transformer = reduce_to_2d(feat, method=method)
     ev = explained_variance_ratio(transformer)
@@ -112,17 +112,17 @@ def get_2d_projection(_df: pd.DataFrame, feature_cols: tuple, method: str) -> pd
 
 
 @st.cache_data(show_spinner="Running anomaly detection...")
-def get_anomaly_scores(_laps: pd.DataFrame, method: str, contamination: float) -> pd.DataFrame:
+def get_anomaly_scores(_laps: pd.DataFrame, method: str, contamination: float, race_id: str) -> pd.DataFrame:
     return detect_lap_anomalies(_laps, method=method, contamination=contamination)
 
 
 @st.cache_data(show_spinner="Comparing anomaly methods...")
-def get_iqr_comparison(_laps: pd.DataFrame, method: str, contamination: float) -> pd.DataFrame:
+def get_iqr_comparison(_laps: pd.DataFrame, method: str, contamination: float, race_id: str) -> pd.DataFrame:
     return compare_with_iqr(_laps, method=method, contamination=contamination)
 
 
 @st.cache_data(show_spinner="Mining strategy patterns...")
-def get_strategy_rules(_laps: pd.DataFrame, min_support: float, min_confidence: float) -> pd.DataFrame:
+def get_strategy_rules(_laps: pd.DataFrame, min_support: float, min_confidence: float, race_id: str) -> pd.DataFrame:
     return mine_strategy_rules(_laps, min_support=min_support, min_confidence=min_confidence)
 
 
@@ -443,7 +443,7 @@ with tab_pit:
 with tab_deg:
     st.subheader(f"Car #{selected_car}: Tyre Degradation")
 
-    deg_summary = get_degradation_summary(laps)
+    deg_summary = get_degradation_summary(laps, selected_race_id)
 
     if deg_summary.empty:
         st.info("No stints with enough clean laps to fit a degradation curve.")
@@ -558,7 +558,7 @@ with tab_cluster:
         st.info(f"Need at least {MIN_CARS_TO_CLUSTER} cars to cluster. This session has {n_cars}.")
     else:
         try:
-            labels_df, meta = get_strategy_clusters(laps, cluster_method, n_clusters_input, cluster_projection)
+            labels_df, meta = get_strategy_clusters(laps, cluster_method, n_clusters_input, cluster_projection, selected_race_id)
         except Exception as exc:
             st.error(f"Clustering failed: {exc}")
             labels_df = None
@@ -675,7 +675,7 @@ with tab_anomaly:
 
     anomaly_method = "isolation_forest" if "Isolation" in anomaly_method_label else "lof"
 
-    annotated_laps = get_anomaly_scores(laps, anomaly_method, anomaly_contamination)
+    annotated_laps = get_anomaly_scores(laps, anomaly_method, anomaly_contamination, selected_race_id)
 
     st.divider()
 
@@ -735,7 +735,7 @@ with tab_anomaly:
         "safety-car laps that blend into the bulk distribution (iqr_only)."
     )
 
-    comparison = get_iqr_comparison(laps, anomaly_method, anomaly_contamination)
+    comparison = get_iqr_comparison(laps, anomaly_method, anomaly_contamination, selected_race_id)
 
     label_map = {
         "both_flagged": "Both (IQR + ML)",
@@ -801,8 +801,9 @@ with tab_anomaly:
     )
 
     if len(_ANOMALY_FEAT_COLS) >= 2:
+        _proj_data_key = f"{selected_race_id}_{anomaly_method}_{anomaly_contamination}"
         proj_coords = get_2d_projection(
-            annotated_laps, _ANOMALY_FEAT_COLS, anomaly_proj_method.lower()
+            annotated_laps, _ANOMALY_FEAT_COLS, anomaly_proj_method.lower(), _proj_data_key
         )
         proj_plot = annotated_laps[["car_number", "car_class", "lap_number",
                                     "lap_time", "anomaly_score", "is_lap_anomaly"]].copy()
@@ -875,7 +876,7 @@ with tab_rules:
             help="P(consequent | antecedent). Higher = more reliable rule.",
         )
 
-    rules = get_strategy_rules(laps, min_support, min_confidence)
+    rules = get_strategy_rules(laps, min_support, min_confidence, selected_race_id)
 
     if rules.empty:
         st.info("No rules found at these thresholds -- try lowering min support.")
