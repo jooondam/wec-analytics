@@ -107,6 +107,73 @@ def build_lap_features(laps: pd.DataFrame, rolling_window: int = 5,) -> pd.DataF
     return df
 
 
+def enrich_with_norm_stint_age(df: pd.DataFrame) -> pd.DataFrame:
+    """Add norm_stint_age: stint_age divided by the car's rolling median completed stint length.
+
+    Makes stint position circuit-agnostic. stint_age=10 means different things at
+    Le Mans (11-lap stints) vs Spa (25-lap stints); norm_stint_age ~1.0 means
+    "approaching typical pit window" regardless of circuit.
+
+    Uses only COMPLETED stints prior to the current one (shift + expanding median),
+    so there is no future data leakage. The first stint of each car falls back to
+    the class-level median stint length computed from the session.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Output of build_lap_features. Must contain car_number, car_class,
+        stint_id, stint_age.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of df with norm_stint_age column appended.
+    """
+    required = ["car_number", "car_class", "stint_id", "stint_age"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise KeyError(f"Missing columns: {missing}. Run build_lap_features first.")
+
+    out = df.copy()
+
+    # completed length of each (car, stint) = max stint_age in that group
+    stint_lengths = (
+        out.groupby(["car_number", "stint_id"])["stint_age"]
+        .max()
+        .rename("stint_length")
+        .reset_index()
+        .sort_values(["car_number", "stint_id"])
+    )
+
+    # rolling median of PREVIOUS completed stints per car (shift excludes current)
+    stint_lengths["rolling_median_stint"] = (
+        stint_lengths
+        .groupby("car_number")["stint_length"]
+        .transform(lambda x: x.shift(1).expanding().median())
+    )
+
+    # first stint has no prior data: fall back to class-level median from this session
+    car_class_map = out.groupby("car_number")["car_class"].first()
+    stint_lengths["car_class"] = stint_lengths["car_number"].map(car_class_map)
+    class_medians = stint_lengths.groupby("car_class")["stint_length"].median()
+    mask = stint_lengths["rolling_median_stint"].isna()
+    stint_lengths.loc[mask, "rolling_median_stint"] = (
+        stint_lengths.loc[mask, "car_class"].map(class_medians)
+    )
+    # final fallback if class median is also NaN (single-car class with no data)
+    stint_lengths["rolling_median_stint"] = stint_lengths["rolling_median_stint"].fillna(20.0)
+
+    out = out.merge(
+        stint_lengths[["car_number", "stint_id", "rolling_median_stint"]],
+        on=["car_number", "stint_id"],
+        how="left",
+    )
+    out["norm_stint_age"] = out["stint_age"] / out["rolling_median_stint"].clip(lower=1.0)
+    out = out.drop(columns=["rolling_median_stint"])
+
+    return out
+
+
 def build_stint_features(laps: pd.DataFrame) -> pd.DataFrame:
     """Aggregate per-lap feature matrix down to one row per stint.
 

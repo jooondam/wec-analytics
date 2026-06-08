@@ -20,7 +20,7 @@ from wec_analytics.analysis.stints import detect_outliers
 from wec_analytics.ingestion.alkamelsystems import extract_session_id, fetch_session
 from wec_analytics.ingestion.models import clean_session
 from wec_analytics.ingestion.sessions import SESSION_MAP
-from wec_analytics.ml.features import build_lap_features
+from wec_analytics.ml.features import build_lap_features, enrich_with_norm_stint_age
 from wec_analytics.ml.clustering import MIN_CARS_TO_CLUSTER, cluster_strategies
 from wec_analytics.ml.anomaly import (
     DEFAULT_CONTAMINATION,
@@ -78,7 +78,7 @@ RACE_LABELS = {
     "BAHRAIN_2020_RACE":     "Bahrain 2020 (8h)",
 }
 
-PIT_FEATURE_COLUMNS = ["stint_age", "rolling_pace", "lap_number", "car_class"]
+PIT_FEATURE_COLUMNS = ["stint_age", "norm_stint_age", "rolling_pace", "lap_number", "car_class"]
 
 MODELS_DIR = Path("models_trained")
 
@@ -156,7 +156,7 @@ def get_session(race_id: str) -> pd.DataFrame:
     cleaned = clean_session(raw)
     with_outliers = detect_outliers(cleaned)
     with_traffic = detect_traffic_lap(with_outliers)
-    featured = build_lap_features(with_traffic)
+    featured = enrich_with_norm_stint_age(build_lap_features(with_traffic))
     featured["race_id"] = meta.race_id
     return enrich_with_deg_slope(featured)
 

@@ -25,7 +25,7 @@ from wec_analytics.ingestion.models import clean_session
 from wec_analytics.ingestion.sessions import SESSION_MAP
 from wec_analytics.ml.evaluation import print_pace_comparison, run_pace_evaluation
 from wec_analytics.ml.degradation import enrich_with_deg_slope
-from wec_analytics.ml.features import LAP_CLEAN_FLAGS, build_lap_features
+from wec_analytics.ml.features import LAP_CLEAN_FLAGS, build_lap_features, enrich_with_norm_stint_age
 from wec_analytics.ml.pace import train_pace_model
 from wec_analytics.ml.persistence import make_versioned_path, save_model
 from wec_analytics.ml.pit_window import train_pit_model
@@ -67,8 +67,8 @@ TRAINING_URLS = [
 # rolling_pace uses closed='left' so it contains only prior laps' times.
 # class_pace_delta is excluded because it embeds the current lap's lap_time,
 # which correlates with is_in_lap (in-laps are systematically slower).
-PIT_FEATURE_COLUMNS = ["stint_age", "rolling_pace", "lap_number", "car_class"]
-PIT_NUMERIC_FEATURES = ["stint_age", "rolling_pace", "lap_number"]
+PIT_FEATURE_COLUMNS = ["stint_age", "norm_stint_age", "rolling_pace", "lap_number", "car_class"]
+PIT_NUMERIC_FEATURES = ["stint_age", "norm_stint_age", "rolling_pace", "lap_number"]
 PIT_CATEGORICAL_FEATURES = ["car_class"]
 
 DIRTY_FLAGS = LAP_CLEAN_FLAGS
@@ -83,7 +83,7 @@ def _load_session(url: str) -> pd.DataFrame:
     cleaned = clean_session(raw)
     with_outliers = detect_outliers(cleaned)
     with_traffic = detect_traffic_lap(with_outliers)
-    featured = build_lap_features(with_traffic)
+    featured = enrich_with_norm_stint_age(build_lap_features(with_traffic))
     featured["race_id"] = meta.race_id
 
     n_cars = featured["car_number"].nunique()
