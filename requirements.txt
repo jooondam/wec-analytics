@@ -10,3 +10,4 @@ streamlit>=1.35
 plotly>=5.20
 mlxtend>=0.23.0
 umap-learn>=0.5
+shap>=0.44.0

@@ -177,6 +177,60 @@ def get_session(race_id: str) -> pd.DataFrame:
     return enrich_with_deg_slope(featured)
 
 
+def _clean_feat_names(raw_names: list) -> list:
+    result = []
+    for n in raw_names:
+        for prefix in ("cat__", "num__", "remainder__"):
+            n = n.replace(prefix, "")
+        result.append(n)
+    return result
+
+
+@st.cache_data(show_spinner="Computing SHAP values...")
+def get_pace_shap(_model, _laps: pd.DataFrame, race_id: str, car_key: str):
+    try:
+        import shap
+    except ImportError:
+        return None, None, None
+    feat_cols = ["stint_age", "lap_number", "car_class", "deg_slope"]
+    X = _laps[feat_cols].dropna()
+    if len(X) < 5:
+        return None, None, None
+    preprocessor = _model.named_steps["preprocessor"]
+    regressor = _model.named_steps["regressor"]
+    X_proc = preprocessor.transform(X)
+    names = _clean_feat_names(list(preprocessor.get_feature_names_out()))
+    try:
+        vals = shap.TreeExplainer(regressor).shap_values(X_proc)
+    except Exception:
+        bg = shap.maskers.Independent(X_proc, max_samples=min(20, len(X_proc)))
+        vals = shap.Explainer(regressor.predict, bg)(X_proc).values
+    return vals, names, X.index
+
+
+@st.cache_data(show_spinner="Computing SHAP values...")
+def get_pit_shap(_model, _laps: pd.DataFrame, feat_cols: tuple, race_id: str, car_key: str):
+    try:
+        import shap
+    except ImportError:
+        return None, None, None
+    X = _laps[list(feat_cols)].dropna()
+    if len(X) < 5:
+        return None, None, None
+    preprocessor = _model.named_steps["preprocessor"]
+    classifier = _model.named_steps["classifier"]
+    X_proc = preprocessor.transform(X)
+    names = _clean_feat_names(list(preprocessor.get_feature_names_out()))
+    try:
+        vals = shap.TreeExplainer(classifier).shap_values(X_proc)
+        if isinstance(vals, list):
+            vals = vals[1]
+    except Exception:
+        bg = shap.maskers.Independent(X_proc, max_samples=min(20, len(X_proc)))
+        vals = shap.Explainer(lambda x: classifier.predict_proba(x)[:, 1], bg)(X_proc).values
+    return vals, names, X.index
+
+
 # ---------------------------------------------------------------------------
 # Page config
 # ---------------------------------------------------------------------------
@@ -385,6 +439,55 @@ with tab_pace:
             )
             st.plotly_chart(fig_res, use_container_width=True)
 
+            with st.expander("Feature importance (SHAP)", expanded=False):
+                shap_vals, shap_names, shap_idx = get_pace_shap(
+                    pace_model, car_laps, selected_race_id, str(selected_car)
+                )
+                if shap_vals is None:
+                    st.info("SHAP not available. Install with `pip install shap`.")
+                else:
+                    # global importance bar chart
+                    mean_abs = np.abs(shap_vals).mean(axis=0)
+                    imp_df = pd.DataFrame(
+                        {"Feature": shap_names, "Mean |SHAP| (s)": mean_abs}
+                    ).sort_values("Mean |SHAP| (s)")
+                    fig_imp = px.bar(
+                        imp_df, x="Mean |SHAP| (s)", y="Feature", orientation="h",
+                        title=f"Car #{selected_car}: average feature impact on pace deviation",
+                        height=200 + 40 * len(shap_names),
+                    )
+                    st.plotly_chart(fig_imp, use_container_width=True)
+
+                    # worst-lap waterfall
+                    shared = valid.index[valid.index.isin(shap_idx)]
+                    if len(shared):
+                        worst_idx = valid.loc[shared, "pace_residual"].idxmax()
+                        lap_pos = list(shap_idx).index(worst_idx)
+                        lap_shap = shap_vals[lap_pos]
+                        lap_num = int(valid.loc[worst_idx, "lap_number"])
+                        wf_df = pd.DataFrame(
+                            {"Feature": shap_names, "SHAP (s)": lap_shap}
+                        ).sort_values("SHAP (s)")
+                        wf_df["color"] = ["#e74c3c" if v > 0 else "#3498db" for v in wf_df["SHAP (s)"]]
+                        fig_wf = go.Figure(go.Bar(
+                            x=wf_df["SHAP (s)"], y=wf_df["Feature"],
+                            orientation="h", marker_color=wf_df["color"],
+                        ))
+                        fig_wf.add_vline(x=0, line_color="grey", line_width=1)
+                        fig_wf.update_layout(
+                            title=f"Lap {lap_num}: why was this the slowest unexpected lap? (red = pushed pace up, blue = down)",
+                            height=200 + 40 * len(shap_names),
+                            showlegend=False,
+                            xaxis_title="SHAP value (s)",
+                        )
+                        st.plotly_chart(fig_wf, use_container_width=True)
+
+                    st.caption(
+                        "Mean |SHAP|: average absolute contribution of each feature across all laps. "
+                        "Waterfall: breakdown for the lap with the largest unexpected slowdown. "
+                        "Red = pushed lap time up (slower). Blue = pushed lap time down (faster)."
+                    )
+
 # ── Tab 3: Pit Probability ──────────────────────────────────────────────────
 
 with tab_pit:
@@ -506,6 +609,76 @@ with tab_pit:
                     f"Green triangles = laps where model exceeds threshold. "
                     f"Adjust the slider to trade off recall vs false alarms."
                 )
+
+                with st.expander("Feature importance (SHAP)", expanded=False):
+                    pit_model_for_shap = None
+                    pit_feat_for_shap = None
+                    pit_laps_for_shap = None
+
+                    if pit_models_per_class is not None:
+                        car_class_val = (
+                            car_laps["car_class"].iloc[0] if not car_laps.empty else None
+                        )
+                        if car_class_val and car_class_val in pit_models_per_class:
+                            pit_model_for_shap = pit_models_per_class[car_class_val]
+                            pit_feat_for_shap = tuple(PIT_FEATURE_COLUMNS_PER_CLASS)
+                            pit_laps_for_shap = car_laps.dropna(subset=PIT_FEATURE_COLUMNS_PER_CLASS)
+                    elif pit_model is not None:
+                        pit_model_for_shap = pit_model
+                        pit_feat_for_shap = tuple(PIT_FEATURE_COLUMNS)
+                        pit_laps_for_shap = pit_laps
+
+                    if pit_model_for_shap is None:
+                        st.info("No pit model available for SHAP.")
+                    else:
+                        shap_vals, shap_names, shap_idx = get_pit_shap(
+                            pit_model_for_shap, pit_laps_for_shap,
+                            pit_feat_for_shap, selected_race_id, str(selected_car)
+                        )
+                        if shap_vals is None:
+                            st.info("SHAP not available. Install with `pip install shap`.")
+                        else:
+                            # global importance bar chart
+                            mean_abs = np.abs(shap_vals).mean(axis=0)
+                            imp_df = pd.DataFrame(
+                                {"Feature": shap_names, "Mean |SHAP|": mean_abs}
+                            ).sort_values("Mean |SHAP|")
+                            fig_imp = px.bar(
+                                imp_df, x="Mean |SHAP|", y="Feature", orientation="h",
+                                title=f"Car #{selected_car}: average feature impact on pit probability",
+                                height=200 + 40 * len(shap_names),
+                            )
+                            st.plotly_chart(fig_imp, use_container_width=True)
+
+                            # highest-probability lap waterfall
+                            shared = pit_laps.index[pit_laps.index.isin(shap_idx)]
+                            if len(shared):
+                                top_idx = pit_laps.loc[shared, "pit_probability"].idxmax()
+                                lap_pos = list(shap_idx).index(top_idx)
+                                lap_shap = shap_vals[lap_pos]
+                                lap_num = int(pit_laps.loc[top_idx, "lap_number"])
+                                wf_df = pd.DataFrame(
+                                    {"Feature": shap_names, "SHAP": lap_shap}
+                                ).sort_values("SHAP")
+                                wf_df["color"] = ["#e74c3c" if v > 0 else "#3498db" for v in wf_df["SHAP"]]
+                                fig_wf = go.Figure(go.Bar(
+                                    x=wf_df["SHAP"], y=wf_df["Feature"],
+                                    orientation="h", marker_color=wf_df["color"],
+                                ))
+                                fig_wf.add_vline(x=0, line_color="grey", line_width=1)
+                                fig_wf.update_layout(
+                                    title=f"Lap {lap_num}: why did the model call a pit here? (red = toward pit, blue = against)",
+                                    height=200 + 40 * len(shap_names),
+                                    showlegend=False,
+                                    xaxis_title="SHAP value",
+                                )
+                                st.plotly_chart(fig_wf, use_container_width=True)
+
+                            st.caption(
+                                "Mean |SHAP|: average absolute contribution of each feature to pit probability. "
+                                "Waterfall: breakdown for the lap with the highest predicted pit probability. "
+                                "Red = pushed toward pit. Blue = pushed against pit."
+                            )
 
 # -- Tab 4: Tyre Degradation -------------------------------------------------
 
