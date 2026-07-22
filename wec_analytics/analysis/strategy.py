@@ -5,40 +5,58 @@ def calculate_pit_stops(df: pd.DataFrame) -> pd.DataFrame:
     """
     Extract rows corresponding to actual pit stops from a session DataFrame.
 
-    A pit stop is defined as a lap where the car crosses the finish line in the
-    pit (``crossing_finish_line_in_pit == "B"``) and has a non-zero, non-null
-    ``pit_time``.
+    Works with both raw session data (uses ``crossing_finish_line_in_pit``)
+    and the processed feature DataFrame (falls back to ``is_in_lap``).
 
     Parameters
     ----------
     df : pd.DataFrame
-        Session DataFrame containing ``crossing_finish_line_in_pit``,
-        ``pit_time``, ``lap_number``, ``car_number``, ``team``, ``class``,
-        and ``stint_number`` columns.
+        Session DataFrame containing pit timing columns.
 
     Returns
     -------
     pd.DataFrame
-        Filtered DataFrame with columns ``lap_number``, ``car_number``,
-        ``team``, ``class``, ``pit_time``, and ``stint_number``.
+        Filtered DataFrame with at minimum ``lap_number``, ``car_number``,
+        and ``pit_time``. Additional columns included when present.
     """
-    return df.loc[(df['crossing_finish_line_in_pit'] == 'B') &
-            # checking that pit time in not empty and null
-            ((df['pit_time'].notna()) & (df['pit_time'] != 0)),
-            ['lap_number', 'car_number', 'team', 'class', 'pit_time', 'stint_number']]
+    if 'is_in_lap' in df.columns:
+        # Processed data: is_in_lap is the authoritative flag (already cleaned)
+        pit_mask = df['is_in_lap'].astype(bool)
+    else:
+        # Raw data: require crossing flag AND a recorded pit_time
+        pit_mask = (df['crossing_finish_line_in_pit'] == 'B') & \
+                   (df['pit_time'].notna()) & (df['pit_time'] != 0)
+
+    mask = pit_mask
+
+    base_cols = ['lap_number', 'car_number', 'pit_time']
+    optional = ['team', 'class', 'car_class', 'stint_number', 'stint_id']
+    cols = base_cols + [c for c in optional if c in df.columns]
+    return df.loc[mask, cols]
     
 
 
-def _get_pit_lap_delta(df: pd.DataFrame, car_number: int, rival_car: int ) -> dict:
-    # guard clause to make sure both cars have pitstop
+def _get_pit_lap_delta(df: pd.DataFrame, car_number: int, rival_car: int) -> dict:
     if car_number not in df['car_number'].values or \
-    rival_car not in df['car_number'].values:
+            rival_car not in df['car_number'].values:
         return None
-    
-    car_lap = df[df['car_number'] == car_number]['lap_number'].iloc[0]
-    rival_lap = df[df['car_number'] == rival_car]['lap_number'].iloc[0]
 
-    # negative value means that your car pitted first, positve value means that your car pitted later
+    car_laps = sorted(df[df['car_number'] == car_number]['lap_number'].tolist())
+    rival_laps = sorted(df[df['car_number'] == rival_car]['lap_number'].tolist())
+    rival_set = set(rival_laps)
+    car_set = set(car_laps)
+
+    # Skip simultaneous stops (both cars pit on the same lap, e.g. safety car)
+    # and use the first stop where each car pitted on a unique lap.
+    car_laps_unique = [l for l in car_laps if l not in rival_set]
+    rival_laps_unique = [l for l in rival_laps if l not in car_set]
+
+    if not car_laps_unique or not rival_laps_unique:
+        return None
+
+    car_lap = car_laps_unique[0]
+    rival_lap = rival_laps_unique[0]
+    # negative = car pitted first, positive = car pitted later
     lap_delta = car_lap - rival_lap
 
     return {
@@ -187,6 +205,8 @@ def detect_undercut(df: pd.DataFrame, car_number: int, rival_car: int) -> dict:
         "car_number": car_number,
         "rival_car": rival_car,
         "undercut_attempted": True,
+        "car_pit_lap": delta_data["car_pit_lap"],
+        "rival_pit_lap": delta_data["rival_pit_lap"],
         "undercut_successful": (pace_results["pace_delta"] < 0) and position_results["position_changed"],
         "pace_details": pace_results,
         "position_details": position_results

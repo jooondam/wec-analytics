@@ -35,6 +35,7 @@ from wec_analytics.ml.features import LAP_CLEAN_FLAGS
 from wec_analytics.ml.pace import predict_pace_session
 from wec_analytics.ml.persistence import load_model
 from wec_analytics.ml.pit_window import predict_pit_curve, predict_pit_curve_per_class
+from wec_analytics.analysis.strategy import detect_undercut
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -156,6 +157,11 @@ def get_strategy_rules(_laps: pd.DataFrame, min_support: float, min_confidence: 
     return mine_strategy_rules(_laps, min_support=min_support, min_confidence=min_confidence)
 
 
+@st.cache_data(show_spinner="Analysing pit strategy...")
+def get_undercut_result(_laps: pd.DataFrame, car_a: int, car_b: int, race_id: str) -> dict:
+    return detect_undercut(_laps, car_a, car_b)
+
+
 @st.cache_data(show_spinner="Loading session data...")
 def get_session(race_id: str) -> pd.DataFrame:
     url = SESSION_URLS[race_id]
@@ -239,8 +245,8 @@ car_laps = laps[laps["car_number"] == selected_car].copy()
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster, tab_anomaly, tab_rules = st.tabs(
-    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters", "Anomaly Detection", "Strategy Patterns"]
+tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster, tab_anomaly, tab_rules, tab_undercut = st.tabs(
+    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters", "Anomaly Detection", "Strategy Patterns", "Undercut / Overcut"]
 )
 
 # ── Tab 1: Race Overview ────────────────────────────────────────────────────
@@ -1007,3 +1013,156 @@ with tab_rules:
         })
         st.caption(f"Top {min(30, len(rules))} rules sorted by lift:")
         st.dataframe(display, use_container_width=True, hide_index=True)
+
+# -- Tab 8: Undercut / Overcut Analysis --------------------------------------
+
+with tab_undercut:
+    st.subheader("Undercut / Overcut Analysis")
+    st.caption(
+        "An undercut is when a car pits early to gain pace on fresh tyres and overtake a rival "
+        "before they stop. An overcut is staying out to maintain track position against a rival "
+        "on fresh rubber. Analysis covers the first pit stop sequence for each car."
+    )
+
+    if len(cars_in_class) < 2:
+        st.info("Need at least two cars in the selected class(es) to analyse an undercut.")
+    else:
+        col_a, col_b = st.columns(2)
+        with col_a:
+            uc_car_a = st.selectbox(
+                "Car A (attacking / pitting first for undercut)",
+                options=cars_in_class,
+                key="uc_car_a",
+            )
+        with col_b:
+            rivals = [c for c in cars_in_class if c != uc_car_a]
+            uc_car_b = st.selectbox("Car B (rival)", options=rivals, key="uc_car_b")
+
+        result_a = get_undercut_result(laps, uc_car_a, uc_car_b, selected_race_id)
+        result_b = get_undercut_result(laps, uc_car_b, uc_car_a, selected_race_id)
+
+        st.divider()
+
+        # Verdict
+        if result_a.get("undercut_attempted"):
+            pace = result_a["pace_details"]
+            pos = result_a["position_details"]
+            success = result_a["undercut_successful"]
+            pace_adv = -pace["pace_delta"]  # negative delta = car_a faster
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Undercut", f"#{uc_car_a} vs #{uc_car_b}")
+            col2.metric("Outcome", "Successful" if success else "Failed")
+            col3.metric(
+                "Pace advantage (window)",
+                f"{pace_adv:+.3f} s/lap",
+                help=f"Car #{uc_car_a} avg pace vs #{uc_car_b} between the two pit stops. Positive = #{uc_car_a} faster.",
+            )
+            col4.metric(
+                "Position change",
+                "Yes" if pos["position_changed"] else "No",
+                help="Whether the lead between these two cars swapped after both stopped.",
+            )
+            car_pit_lap = result_a["car_pit_lap"]
+            rival_pit_lap = result_a["rival_pit_lap"]
+
+        elif result_b.get("undercut_attempted"):
+            # Car B pitted first: car A was the overcut car
+            pace = result_b["pace_details"]
+            pos = result_b["position_details"]
+            b_undercut_success = result_b["undercut_successful"]
+            pace_adv_b = -pace["pace_delta"]  # how much faster car_b was on fresh rubber
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Overcut", f"#{uc_car_a} stayed out vs #{uc_car_b}")
+            col2.metric(
+                "Outcome",
+                "Overcut held" if not b_undercut_success else "Undercut by rival succeeded",
+            )
+            col3.metric(
+                f"#{uc_car_b} pace advantage (window)",
+                f"{pace_adv_b:+.3f} s/lap",
+                help=f"Car #{uc_car_b} avg pace vs #{uc_car_a} on fresh tyres. Positive = #{uc_car_b} faster.",
+            )
+            col4.metric(
+                "Position change",
+                "Yes" if pos["position_changed"] else "No",
+            )
+            car_pit_lap = result_b["car_pit_lap"]
+            rival_pit_lap = result_b["rival_pit_lap"]
+
+        else:
+            reason_a = result_a.get("reason", "")
+            st.info(f"No undercut or overcut detected between car #{uc_car_a} and car #{uc_car_b}. {reason_a}")
+            car_pit_lap = None
+            rival_pit_lap = None
+
+        # Lap time comparison chart
+        st.divider()
+        st.subheader(f"Car #{uc_car_a} vs Car #{uc_car_b}: lap time trace")
+
+        laps_a = laps[laps["car_number"] == uc_car_a]
+        laps_b = laps[laps["car_number"] == uc_car_b]
+        clean_a = laps_a[~laps_a[LAP_CLEAN_FLAGS].any(axis=1)]
+        clean_b = laps_b[~laps_b[LAP_CLEAN_FLAGS].any(axis=1)]
+
+        pits_a = laps_a[laps_a["is_in_lap"]]["lap_number"].tolist()
+        pits_b = laps_b[laps_b["is_in_lap"]]["lap_number"].tolist()
+
+        fig_uc = go.Figure()
+
+        fig_uc.add_trace(go.Scatter(
+            x=clean_a["lap_number"],
+            y=clean_a["lap_time"],
+            mode="markers+lines",
+            name=f"Car #{uc_car_a}",
+            marker=dict(size=4),
+            line=dict(width=1.5),
+        ))
+        fig_uc.add_trace(go.Scatter(
+            x=clean_b["lap_number"],
+            y=clean_b["lap_time"],
+            mode="markers+lines",
+            name=f"Car #{uc_car_b}",
+            marker=dict(size=4),
+            line=dict(width=1.5),
+        ))
+
+        for lap in pits_a:
+            fig_uc.add_vline(x=lap, line_dash="dash", line_color="blue", opacity=0.35,
+                             annotation_text=f"#{uc_car_a} pit" if lap == pits_a[0] else "",
+                             annotation_position="top")
+        for lap in pits_b:
+            fig_uc.add_vline(x=lap, line_dash="dot", line_color="orange", opacity=0.35,
+                             annotation_text=f"#{uc_car_b} pit" if lap == pits_b[0] else "",
+                             annotation_position="top")
+
+        # Shade the undercut/overcut window between the two first stops
+        if car_pit_lap is not None and rival_pit_lap is not None:
+            win_lo = min(car_pit_lap, rival_pit_lap)
+            win_hi = max(car_pit_lap, rival_pit_lap)
+            fig_uc.add_vrect(
+                x0=win_lo, x1=win_hi,
+                fillcolor="yellow", opacity=0.12,
+                layer="below", line_width=0,
+                annotation_text="pit window", annotation_position="top left",
+            )
+
+        fig_uc.update_layout(
+            title=f"Car #{uc_car_a} vs Car #{uc_car_b}: clean lap times (yellow = pit window)",
+            xaxis_title="Lap",
+            yaxis_title="Lap time (s)",
+            height=460,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        )
+        st.plotly_chart(fig_uc, use_container_width=True)
+
+        # Pit stop events table
+        if pits_a or pits_b:
+            st.subheader("Pit stop timeline")
+            events = (
+                [{"Car": f"#{uc_car_a}", "Pit lap": lap} for lap in pits_a]
+                + [{"Car": f"#{uc_car_b}", "Pit lap": lap} for lap in pits_b]
+            )
+            events_df = pd.DataFrame(events).sort_values("Pit lap").reset_index(drop=True)
+            st.dataframe(events_df, use_container_width=True, hide_index=True)
