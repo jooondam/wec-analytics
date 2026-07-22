@@ -28,7 +28,7 @@ from wec_analytics.ml.anomaly import (
     compare_with_iqr,
     detect_lap_anomalies,
 )
-from wec_analytics.ml.association import mine_strategy_rules
+from wec_analytics.ml.association import mine_strategy_rules, recommend_strategy, build_strategy_transactions
 from wec_analytics.ml.reduction import explained_variance_ratio, reduce_to_2d
 from wec_analytics.ml.degradation import MIN_STINT_LAPS, compare_degradation, enrich_with_deg_slope, fit_all_stints
 from wec_analytics.ml.features import LAP_CLEAN_FLAGS
@@ -155,6 +155,11 @@ def get_iqr_comparison(_laps: pd.DataFrame, method: str, contamination: float, r
 @st.cache_data(show_spinner="Mining strategy patterns...")
 def get_strategy_rules(_laps: pd.DataFrame, min_support: float, min_confidence: float, race_id: str) -> pd.DataFrame:
     return mine_strategy_rules(_laps, min_support=min_support, min_confidence=min_confidence)
+
+
+@st.cache_data(show_spinner="Building strategy transactions...")
+def get_strategy_transactions(_laps: pd.DataFrame, race_id: str) -> pd.DataFrame:
+    return build_strategy_transactions(_laps)
 
 
 @st.cache_data(show_spinner="Analysing pit strategy...")
@@ -299,8 +304,8 @@ car_laps = laps[laps["car_number"] == selected_car].copy()
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster, tab_anomaly, tab_rules, tab_undercut = st.tabs(
-    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters", "Anomaly Detection", "Strategy Patterns", "Undercut / Overcut"]
+tab_overview, tab_pace, tab_pit, tab_deg, tab_cluster, tab_anomaly, tab_rules, tab_undercut, tab_advisor = st.tabs(
+    ["Race Overview", "Pace Residuals", "Pit Probability", "Tyre Degradation", "Strategy Clusters", "Anomaly Detection", "Strategy Patterns", "Undercut / Overcut", "Strategy Advisor"]
 )
 
 # ── Tab 1: Race Overview ────────────────────────────────────────────────────
@@ -1339,3 +1344,134 @@ with tab_undercut:
             )
             events_df = pd.DataFrame(events).sort_values("Pit lap").reset_index(drop=True)
             st.dataframe(events_df, use_container_width=True, hide_index=True)
+
+# -- Tab 9: Strategy Advisor -------------------------------------------------
+
+with tab_advisor:
+    st.subheader("Strategy Advisor")
+    st.caption(
+        "Describe the current race window and the advisor estimates the probability of a pit "
+        "stop in the next 30 minutes, based on historical windows from this session."
+    )
+
+    # State inputs
+    col_left, col_right = st.columns(2)
+    with col_left:
+        adv_sc = st.checkbox("Safety car active", key="adv_sc")
+        adv_traffic = st.checkbox("Heavy traffic this window", key="adv_traffic")
+        adv_driver_change = st.checkbox("Driver change this window", key="adv_dc")
+        adv_pitted = st.checkbox("Already pitted in this window", key="adv_pit")
+    with col_right:
+        adv_quarter = st.radio(
+            "Race quarter",
+            options=["Q1: 0-25%", "Q2: 25-50%", "Q3: 50-75%", "Q4: 75-100%"],
+            key="adv_quarter",
+        )
+
+    st.divider()
+
+    # Build state dict from inputs
+    q_key = adv_quarter.split(":")[0].lower()
+    car_class_val = car_laps["car_class"].iloc[0] if not car_laps.empty else None
+
+    adv_state = {
+        "sc_period": adv_sc,
+        "traffic_heavy": adv_traffic,
+        "driver_change": adv_driver_change,
+        "pit_stop": adv_pitted,
+        "q1": q_key == "q1",
+        "q2": q_key == "q2",
+        "q3": q_key == "q3",
+        "q4": q_key == "q4",
+    }
+    if car_class_val:
+        adv_state[f"class_{car_class_val}"] = True
+
+    # Compute conditional pit probability directly from transactions
+    tx = get_strategy_transactions(laps, selected_race_id)
+    base_rate = float(tx["next_pit"].mean())
+
+    mask = pd.Series(True, index=tx.index)
+    for item, val in adv_state.items():
+        if val and item in tx.columns:
+            mask &= tx[item].astype(bool)
+    matching_tx = tx[mask]
+
+    if matching_tx.empty:
+        pit_prob = None
+        n_windows = 0
+    else:
+        pit_prob = float(matching_tx["next_pit"].mean())
+        n_windows = len(matching_tx)
+
+    # Verdict based on lift vs base rate
+    if pit_prob is None:
+        verdict = "NO DATA"
+        colour = "#7f8c8d"
+    elif pit_prob >= base_rate * 2.0:
+        verdict = "PIT"
+        colour = "#e74c3c"
+    elif pit_prob >= base_rate * 1.4:
+        verdict = "PIT (weak signal)"
+        colour = "#e67e22"
+    else:
+        verdict = "STAY OUT"
+        colour = "#2ecc71"
+
+    st.markdown(f"<h2 style='color:{colour};'>{verdict}</h2>", unsafe_allow_html=True)
+
+    # Probability metrics
+    m1, m2, m3 = st.columns(3)
+    m1.metric(
+        "Pit probability",
+        f"{pit_prob:.0%}" if pit_prob is not None else "n/a",
+        help="Fraction of historical windows matching this state that saw a pit in the next 30 min.",
+    )
+    m2.metric("Session base rate", f"{base_rate:.0%}", help="Overall fraction of windows with a pit in the next 30 min.")
+    m3.metric("Matching windows", n_windows, help="How many historical windows match this state.")
+
+    # Supporting rules
+    st.divider()
+    st.subheader("Supporting rules")
+    adv_rules = get_strategy_rules(laps, 0.05, 0.10, selected_race_id)
+    matches = recommend_strategy(adv_rules, adv_state)
+
+    if matches.empty:
+        st.info("No association rules fire for this state.")
+    else:
+        # Rules table
+        display = matches[["antecedents_str", "consequents_str", "confidence", "lift", "support"]].copy()
+        display["confidence"] = display["confidence"].round(3)
+        display["lift"] = display["lift"].round(3)
+        display["support"] = display["support"].round(3)
+        display = display.rename(columns={"antecedents_str": "If", "consequents_str": "Then"})
+        st.dataframe(display, use_container_width=True, hide_index=True)
+
+        # Confidence bar chart
+        if len(matches) > 1:
+            matches_plot = matches.copy()
+            matches_plot["rule"] = matches_plot["antecedents_str"] + "  ->  " + matches_plot["consequents_str"]
+            fig_adv = px.bar(
+                matches_plot.iloc[::-1],
+                x="confidence",
+                y="rule",
+                orientation="h",
+                color="lift",
+                color_continuous_scale="Blues",
+                range_x=[0, 1],
+                labels={"confidence": "Confidence", "rule": "Rule", "lift": "Lift"},
+                title="Firing rules by confidence",
+                height=max(300, 46 * len(matches_plot)),
+            )
+            fig_adv.update_layout(
+                yaxis=dict(tickfont=dict(size=11)),
+                margin=dict(l=280),
+                coloraxis_colorbar=dict(title="Lift"),
+            )
+            st.plotly_chart(fig_adv, use_container_width=True)
+
+    st.caption(
+        "Pit probability: empirical rate from 15-min windows in this session that match the selected state. "
+        "Supporting rules: association rules mined at min confidence 10%, filtered to those that predict next_pit. "
+        "Lift > 1 means the rule fires more often than the base rate."
+    )

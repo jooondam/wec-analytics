@@ -267,6 +267,45 @@ def mine_strategy_rules(
     return rules
 
 
+def recommend_strategy(
+    rules: pd.DataFrame,
+    state: dict,
+    consequent: str = "next_pit",
+) -> pd.DataFrame:
+    """Return rules whose antecedents are all satisfied by the current race state.
+
+    Parameters
+    ----------
+    rules : pd.DataFrame
+        Output of mine_strategy_rules().
+    state : dict[str, bool]
+        Current race state. Keys are item names (sc_period, traffic_heavy,
+        q1-q4, pit_stop, driver_change, class_X, etc.) and values are bools.
+    consequent : str
+        The outcome item to filter on. Default 'next_pit'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Matching rules sorted by confidence descending.
+        Empty DataFrame if no rules match.
+    """
+    if rules.empty:
+        return rules
+
+    target = rules[
+        rules["consequents"].apply(lambda fs: fs == frozenset({consequent}))
+    ]
+    if target.empty:
+        return target
+
+    true_items = {item for item, val in state.items() if val}
+    matching = target[
+        target["antecedents"].apply(lambda fs: fs.issubset(true_items))
+    ]
+    return matching.sort_values("confidence", ascending=False).reset_index(drop=True)
+
+
 def _empty_rules_df() -> pd.DataFrame:
     return pd.DataFrame(columns=[
         "antecedents", "consequents", "antecedents_str", "consequents_str",
