@@ -1,8 +1,34 @@
 # wec-analytics
 
-End-to-end ML pipeline for FIA WEC endurance race strategy analysis. Ingests ~70,000 laps of real timing data across 14 races, builds a clean feature dataset, and trains models to predict pit windows lap-by-lap. Includes a 7-tab Streamlit dashboard to explore results visually.
+Python pipeline and dashboard for FIA WEC endurance race strategy analysis. Built to understand how race engineers think about pace and pit timing, using the same Al Kamel Systems timing data the teams actually use.
 
-**[Live demo](https://wec-analytics-obljzqgpkghba3w4wb4rmr.streamlit.app)** | **[Portfolio](https://jooondam.github.io/wec-analytics)**
+Ingests ~70,000 laps across 14 races, engineers a clean feature dataset from scratch, and trains models to predict pace deviation and pit stop probability lap-by-lap. Results are surfaced through a 9-tab Streamlit dashboard.
+
+**[Live demo](https://wec-analytics.onrender.com)** | **[Portfolio](https://jooondam.github.io/wec-analytics)**
+
+---
+
+## Screenshots
+
+**Race Overview** - lap times across all cars, coloured by class
+
+![Race Overview](docs/screenshots/overview.png)
+
+**Pace Residuals + SHAP** - predicted vs actual pace, with per-feature breakdown of the worst lap
+
+![Pace Residuals](docs/screenshots/pace.png)
+
+**Pit Probability** - model output per lap, with actual pit stops marked
+
+![Pit Probability](docs/screenshots/pit.png)
+
+**Undercut / Overcut** - lap time trace for two cars with the pit window shaded
+
+![Undercut / Overcut](docs/screenshots/undercut.png)
+
+**Strategy Advisor** - pit probability estimate from historical windows, backed by association rules
+
+![Strategy Advisor](docs/screenshots/advisor.png)
 
 ---
 
@@ -29,6 +55,9 @@ Pit stop prediction is a class-imbalance problem: pit laps are rare events in a 
 | Feature engineering | Rolling median pace, stint age, class pace delta, tyre deg slope |
 | Pace regression | HistGradientBoostingRegressor predicting deviation from rolling pace |
 | Pit classifier | HistGradientBoostingClassifier predicting pit-stop probability per lap |
+| SHAP explainability | TreeExplainer on both models, global importance bar chart and per-lap waterfall in the app |
+| Undercut / Overcut detection | Identifies the first strategic pit sequence between two cars and classifies the outcome |
+| Strategy Advisor | Empirical pit probability from historical 15-min windows, backed by association rule evidence |
 | Anomaly detection | Isolation Forest and LOF for multi-feature lap anomaly scoring |
 | Strategy clustering | KMeans / DBSCAN on per-car strategy features with PCA / UMAP projection |
 | Association rules | Apriori on 15-minute race windows to surface strategy event patterns |
@@ -58,7 +87,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Seven tabs: Race Overview, Pace Residuals, Pit Probability, Tyre Degradation, Strategy Clusters, Anomaly Detection, Strategy Patterns. Race data is cached after the first fetch.
+Nine tabs: Race Overview, Pace Residuals, Pit Probability, Tyre Degradation, Strategy Clusters, Anomaly Detection, Strategy Patterns, Undercut / Overcut, Strategy Advisor. Race data is cached after the first fetch.
 
 ## Train the models
 
@@ -66,7 +95,7 @@ Seven tabs: Race Overview, Pace Residuals, Pit Probability, Tyre Degradation, St
 python scripts/train_models.py
 ```
 
-Fetches all six races, runs the full pipeline, trains pace and pit models with leave-one-race-out CV, saves versioned `.joblib` artifacts to `models_trained/`.
+Fetches all races, runs the full pipeline, trains pace and pit models with leave-one-race-out CV, saves versioned `.joblib` artifacts to `models_trained/`.
 
 ## Tests
 
@@ -89,7 +118,7 @@ wec_analytics/
     degradation.py fit_all_stints, enrich_with_deg_slope
     clustering.py  cluster_strategies (KMeans / DBSCAN)
     anomaly.py     detect_lap_anomalies (IsolationForest / LOF)
-    association.py mine_strategy_rules (Apriori)
+    association.py mine_strategy_rules (Apriori), recommend_strategy
     reduction.py   reduce_to_2d (PCA / UMAP)
     evaluation.py  GroupKFold CV, baseline comparison
 scripts/
@@ -111,7 +140,7 @@ from wec_analytics.ml.degradation import enrich_with_deg_slope
 from wec_analytics.ml.pace import train_pace_model, predict_pace_session
 from wec_analytics.ml.pit_window import train_pit_model, predict_pit_curve
 from wec_analytics.ml.anomaly import detect_lap_anomalies
-from wec_analytics.ml.association import mine_strategy_rules
+from wec_analytics.ml.association import mine_strategy_rules, recommend_strategy
 from wec_analytics.ml.reduction import reduce_to_2d
 
 url = "http://fiawec.alkamelsystems.com/Results/08_2018-2019/07_SPA%20FRANCORCHAMPS/267_FIA%20WEC/201905041330_Race/Hour%206/23_Analysis_Race_Hour%206.CSV"
@@ -130,7 +159,7 @@ pace_model = train_pace_model(
 )
 annotated = predict_pace_session(pace_model, laps)
 
-rules  = mine_strategy_rules(laps, min_support=0.05, min_confidence=0.6)
+rules = mine_strategy_rules(laps, min_support=0.05, min_confidence=0.6)
 coords, _ = reduce_to_2d(laps[["class_pace_delta", "stint_age"]], method="umap")
 ```
 

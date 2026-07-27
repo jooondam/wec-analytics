@@ -803,7 +803,7 @@
       <span class="wordmark">WEC<span class="slash">/</span>ANALYTICS</span>
       <div class="nav-status">
         <span class="status-dot"></span>
-        2018–2019 Super Season
+        2018–2020 Seasons
       </div>
     </div>
     <ul>
@@ -832,9 +832,10 @@
     <div class="hero-body">
       <div>
         <p class="hero-desc">
-          An open-source Python library that ingests <strong>Al Kamel Systems</strong> timing data,
-          builds a feature-engineered lap dataset, and trains models to predict
-          <strong>pace degradation</strong> and <strong>pit windows</strong> across four car classes.
+          An open-source Python package that ingests <strong>Al Kamel Systems</strong> timing data
+          and runs a full ML pipeline across four car classes. The dashboard covers pace predictions,
+          pit probability curves, <strong>SHAP feature importance</strong>, undercut analysis,
+          and a strategy advisor built on association rules.
         </p>
         <div class="cta-row">
           <a class="btn btn-primary" href="#demo">Live demo →</a>
@@ -1048,6 +1049,18 @@
         <h3>Model persistence</h3>
         <p>Fitted pipelines saved with joblib alongside a JSON sidecar recording training sessions, CV scores, feature columns, and sklearn version.</p>
       </div>
+      <div class="feature-card">
+        <h3>SHAP explainability</h3>
+        <p>TreeExplainer on both models. Global importance bar chart and a per-lap waterfall for the worst pace deviation or highest pit call in the session.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Undercut / Overcut</h3>
+        <p>Detects the first strategic pit sequence between two cars, skips safety car stops, and classifies whether the undercut gained position.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Strategy Advisor</h3>
+        <p>Describe the current race window and get a pit probability estimate from historical 15-min transactions, backed by association rule evidence.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -1059,12 +1072,12 @@
   <div class="container">
     <p class="section-tag">Interactive Demo</p>
     <h2>EXPLORE THE DATA</h2>
-    <p class="section-sub">Select a race, filter by class, and pick a car to see its stint degradation, pace residuals, and pit probability curve.</p>
+    <p class="section-sub">Select a race, filter by class, and pick a car to explore pace residuals, pit probability, degradation, undercut analysis, and more.</p>
 
     <div class="race-grid reveal">
       <div class="race-card">
-        <p class="race-flag">Belgium · 2019</p>
-        <p class="race-name">Spa-Franco&shy;rchamps</p>
+        <p class="race-flag">UK · 2018</p>
+        <p class="race-name">Silverstone</p>
         <p class="race-year">6 Hours</p>
       </div>
       <div class="race-card">
@@ -1078,25 +1091,65 @@
         <p class="race-year">6 Hours</p>
       </div>
       <div class="race-card">
-        <p class="race-flag">UK · 2018</p>
-        <p class="race-name">Silverstone</p>
-        <p class="race-year">6 Hours</p>
-      </div>
-      <div class="race-card">
         <p class="race-flag">USA · 2019</p>
         <p class="race-name">Sebring</p>
         <p class="race-year">8 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">Belgium · 2019</p>
+        <p class="race-name">Spa-Franco&shy;rchamps</p>
+        <p class="race-year">6 Hours</p>
       </div>
       <div class="race-card">
         <p class="race-flag">France · 2019</p>
         <p class="race-name">Le Mans</p>
         <p class="race-year">24 Hours</p>
       </div>
+      <div class="race-card">
+        <p class="race-flag">UK · 2019</p>
+        <p class="race-name">Silverstone</p>
+        <p class="race-year">4 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">Japan · 2019</p>
+        <p class="race-name">Fuji Speedway</p>
+        <p class="race-year">6 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">China · 2019</p>
+        <p class="race-name">Shanghai</p>
+        <p class="race-year">4 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">Bahrain · 2019</p>
+        <p class="race-name">Bahrain</p>
+        <p class="race-year">8 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">USA · 2020</p>
+        <p class="race-name">COTA</p>
+        <p class="race-year">6 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">Belgium · 2020</p>
+        <p class="race-name">Spa-Franco&shy;rchamps</p>
+        <p class="race-year">6 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">France · 2020</p>
+        <p class="race-name">Le Mans</p>
+        <p class="race-year">24 Hours</p>
+      </div>
+      <div class="race-card">
+        <p class="race-flag">Bahrain · 2020</p>
+        <p class="race-name">Bahrain</p>
+        <p class="race-year">8 Hours</p>
+      </div>
     </div>
 
     <div class="demo-cta">
-      <a class="btn btn-primary" href="https://wec-analytics-obljzqgpkghba3w4wb4rmr.streamlit.app/" target="_blank">Open live demo →</a>
-      <p class="demo-note">Hosted on Streamlit Community Cloud.<br>May take 30 s to wake up on first visit.</p>
+      <a class="btn btn-primary" href="https://wec-analytics.onrender.com" target="_blank">Open live demo →</a>
+      <p class="demo-note">Hosted on Render. Kept alive with UptimeRobot.</p>
     </div>
   </div>
 </section>
